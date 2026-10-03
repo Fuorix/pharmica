@@ -1,0 +1,624 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Organisation {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  branches  Branch[]
+  users     User[]
+  auditLogs AuditLog[]
+}
+
+model Branch {
+  id             String       @id @default(cuid())
+  organisationId String
+  name           String
+  organisation   Organisation @relation(fields: [organisationId], references: [id])
+  users          User[]
+  devices        Device[]
+  products       Product[]
+  sales          Sale[]
+  shifts         Shift[]
+  heldBills      HeldBill[]
+  suppliers      Supplier[]
+  purchases      Purchase[]
+  stockMovements StockMovement[]
+  priceReports   PriceChangeReport[]
+  customers      Customer[]
+  customerLedger CustomerLedgerEntry[]
+  supplierLedger SupplierLedgerEntry[]
+    controlledDrugRecords ControlledDrugRecord[]
+    syncChanges    SyncChange[]
+}
+
+model User {
+  id             String       @id @default(cuid())
+  organisationId String?
+  branchId       String?
+  name           String
+  login          String       @unique
+  credentialHash String?
+  pinHash        String?
+  role           UserRole
+  /// Largest discount a cashier may give, as a percent of the bill. Owners are not limited.
+  maxDiscountPercent Int      @default(0)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  organisation   Organisation? @relation(fields: [organisationId], references: [id])
+  branch         Branch?      @relation(fields: [branchId], references: [id])
+  sessions       Session[]
+  auditLogs      AuditLog[]
+  sales          Sale[]
+  shifts         Shift[]
+  heldBills      HeldBill[]
+  purchases      Purchase[]
+  stockMovements StockMovement[]
+  customerLedger CustomerLedgerEntry[]
+  supplierLedger SupplierLedgerEntry[]
+  controlledDrugRecords ControlledDrugRecord[]
+  saleReturns    SaleReturn[]
+}
+
+enum UserRole {
+  OWNER
+  CASHIER
+  SUPER_ADMIN
+}
+
+model Device {
+  id           String    @id @default(cuid())
+  branchId     String
+  name         String
+  activationCode String  @unique
+  secretHash   String?
+  activatedAt  DateTime?
+  isActive     Boolean   @default(true)
+  lastSeenAt   DateTime?
+  createdAt    DateTime  @default(now())
+  syncCursor   Int       @default(0)
+  branch       Branch    @relation(fields: [branchId], references: [id])
+  syncOperations SyncOperation[]
+  syncChanges    SyncChange[]
+  sessions       Session[]
+}
+
+model SyncOperation {
+  idempotencyKey String   @id
+  deviceId       String
+  branchId       String
+  entityType     String
+  payload        Json
+  status         SyncOperationStatus @default(PENDING)
+  retryCount     Int      @default(0)
+  errorMessage   String?
+  nextAttemptAt  DateTime?
+  createdAt      DateTime @default(now())
+  processedAt    DateTime?
+  device         Device   @relation(fields: [deviceId], references: [id])
+  changes        SyncChange[]
+
+  @@index([deviceId, createdAt])
+}
+
+enum SyncOperationStatus {
+  PENDING
+  APPLIED
+  CONFLICT
+  FAILED
+}
+
+model SyncChange {
+  cursor         Int      @id @default(autoincrement())
+  branchId       String
+  deviceId       String
+  operationId    String?
+  entityType     String
+  entityId       String
+  version        Int      @default(1)
+  payload        Json
+  createdAt      DateTime @default(now())
+  branch         Branch   @relation(fields: [branchId], references: [id])
+  device         Device   @relation(fields: [deviceId], references: [id])
+  operation      SyncOperation? @relation(fields: [operationId], references: [idempotencyKey])
+
+  @@index([branchId, cursor])
+}
+
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  deviceId   String?
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device     Device?   @relation(fields: [deviceId], references: [id])
+}
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  organisationId String?
+  branchId       String?
+  userId         String?
+  action         String
+  entityType     String
+  entityId       String?
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+  organisation   Organisation? @relation(fields: [organisationId], references: [id])
+  user           User?        @relation(fields: [userId], references: [id])
+
+  @@index([action, entityId, createdAt])
+}
+
+model Product {
+  id                String         @id @default(cuid())
+  branchId          String
+  masterProductId   String?
+  name              String
+  barcode           String?
+  generic           String?
+  /// Company for shop-specific items; master items use the master company.
+  company           String?
+  category          ProductCategory @default(MEDICINE)
+  /// Pack structure for shop-specific items; master items use the master values.
+  unitsPerPack      Int?
+  tabletsPerStrip   Int?
+  rackLocation      String?
+  /// Shop price per pack. It can only lower the batch retail price, never raise it.
+  retailPriceOverride Decimal?      @db.Decimal(12, 2)
+  isShopSpecific    Boolean        @default(false)
+  isActive          Boolean        @default(true)
+  /// Low-stock alert level in packs; 0 turns the alert off.
+  lowStockThreshold Int            @default(0)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  branch            Branch         @relation(fields: [branchId], references: [id])
+  masterProduct     MasterProduct? @relation(fields: [masterProductId], references: [id])
+  batches           Batch[]
+  saleLines         SaleLine[]
+  purchaseLines     PurchaseLine[]
+  stockMovements    StockMovement[]
+  priceReports      PriceChangeReport[]
+  controlledDrugRecords ControlledDrugRecord[]
+
+  @@unique([branchId, barcode])
+  @@unique([branchId, masterProductId])
+  @@index([branchId, name])
+  @@index([masterProductId])
+}
+
+model MasterProduct {
+  id                   String               @id @default(cuid())
+  name                 String
+  brand                String?
+  generic              String?
+  company              String?
+  dosageForm           String?
+  strength             String?
+  drapRegistrationNo   String?              @unique
+  barcode              String?              @unique
+  /// Strips (or bottles, tubes) per pack.
+  unitsPerPack         Int                  @default(1)
+  /// Tablets per strip; 1 for items that cannot be split.
+  tabletsPerStrip      Int                  @default(1)
+  officialRetailPrice  Decimal?             @db.Decimal(12, 2)
+  isPrescriptionOnly   Boolean              @default(false)
+  isControlled         Boolean              @default(false)
+  source               String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  products             Product[]
+  priceHistory         MasterPriceHistory[]
+
+  @@index([name])
+  @@index([generic])
+  @@index([company])
+}
+
+model MasterPriceHistory {
+  id              String        @id @default(cuid())
+  masterProductId String
+  price           Decimal       @db.Decimal(12, 2)
+  effectiveFrom   DateTime
+  /// SRO, COMPANY_PRICE_LIST, DISTRIBUTOR_INVOICE, SHOP_REPORT, DRAP_IMPORT, or MANUAL.
+  source          String
+  /// The SRO number, price-list name, or invoice the price came from.
+  reference       String?
+  recordedById    String?
+  createdAt       DateTime      @default(now())
+  masterProduct   MasterProduct @relation(fields: [masterProductId], references: [id], onDelete: Cascade)
+
+  @@index([masterProductId, effectiveFrom])
+}
+
+model Batch {
+  id             String   @id @default(cuid())
+  productId      String
+  batchNo        String
+  expiryDate     DateTime
+  /// Stock on hand in base units (single tablets, or single packs for unsplittable items).
+  /// Always equals the sum of this batch's stock movements.
+  quantity       Int      @default(0)
+  costPrice      Decimal? @db.Decimal(12, 2)
+  retailPrice    Decimal  @db.Decimal(12, 2)
+  serialNumber   String?
+  retailPriceSource String?
+  createdAt      DateTime @default(now())
+  product        Product  @relation(fields: [productId], references: [id])
+  purchaseLines  PurchaseLine[]
+  stockMovements StockMovement[]
+  saleLines      SaleLine[]
+  priceReports   PriceChangeReport[]
+
+  @@unique([productId, batchNo])
+  @@index([productId, expiryDate])
+}
+
+model Supplier {
+  id          String     @id @default(cuid())
+  branchId    String
+  name        String
+  phone       String?
+  createdAt   DateTime   @default(now())
+  branch      Branch     @relation(fields: [branchId], references: [id])
+  purchases   Purchase[]
+  ledger      SupplierLedgerEntry[]
+
+  @@unique([branchId, name])
+  @@index([branchId])
+}
+
+model Purchase {
+  id             String          @id @default(cuid())
+  branchId       String
+  supplierId     String
+  userId         String
+  /// Set when the purchase was received on a POS device.
+  deviceId       String?
+  invoiceNumber  String?
+  invoiceDate    DateTime?
+  /// Sum of line amounts before discounts.
+  subtotal       Decimal         @db.Decimal(12, 2)
+  /// Sum of the line trade discounts.
+  lineDiscount   Decimal         @default(0) @db.Decimal(12, 2)
+  /// Discount on the whole invoice.
+  tradeDiscount  Decimal         @default(0) @db.Decimal(12, 2)
+  bonusPacks     Int             @default(0)
+  total          Decimal         @db.Decimal(12, 2)
+  receivedAt     DateTime        @default(now())
+  branch         Branch          @relation(fields: [branchId], references: [id])
+  supplier       Supplier        @relation(fields: [supplierId], references: [id])
+  user           User            @relation(fields: [userId], references: [id])
+  lines          PurchaseLine[]
+  ledgerEntries  SupplierLedgerEntry[]
+  priceReports   PriceChangeReport[]
+
+  @@index([branchId, receivedAt])
+  @@index([supplierId, invoiceNumber])
+}
+
+model PurchaseLine {
+  id             String   @id @default(cuid())
+  purchaseId     String
+  productId      String
+  batchId        String
+  quantity       Int
+  bonusQuantity  Int      @default(0)
+  /// Invoice price per pack, before discounts.
+  costPrice      Decimal  @db.Decimal(12, 2)
+  retailPrice    Decimal  @db.Decimal(12, 2)
+  /// Trade discount on this line in PKR.
+  tradeDiscount  Decimal  @default(0) @db.Decimal(12, 2)
+  /// This line's share of the invoice discount.
+  invoiceDiscount Decimal @default(0) @db.Decimal(12, 2)
+  /// Real cost per pack after all discounts, spread over paid and bonus packs.
+  effectiveCost  Decimal  @default(0) @db.Decimal(12, 2)
+  serialNumber   String?
+  purchase       Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product        Product  @relation(fields: [productId], references: [id])
+  batch          Batch    @relation(fields: [batchId], references: [id])
+}
+
+model StockMovement {
+  id          String        @id @default(cuid())
+  branchId    String
+  productId   String
+  batchId     String?
+  /// Null for movements the system recorded itself, such as opening balances.
+  userId      String?
+  type        StockMovementType
+  quantity    Int
+  reason      String?
+  referenceId String?
+  createdAt   DateTime      @default(now())
+  branch      Branch        @relation(fields: [branchId], references: [id])
+  product     Product       @relation(fields: [productId], references: [id])
+  batch       Batch?        @relation(fields: [batchId], references: [id])
+  user        User?         @relation(fields: [userId], references: [id])
+
+  @@index([branchId, createdAt])
+  @@index([productId, batchId])
+  @@index([batchId])
+}
+
+enum StockMovementType {
+  OPENING
+  RECEIPT
+  COUNT
+  SALE
+  SALE_RETURN
+  ADJUSTMENT
+  WRITE_OFF
+  DAMAGE
+  EXPIRY
+  RETURN_TO_SUPPLIER
+}
+
+model PriceChangeReport {
+  id             String             @id @default(cuid())
+  branchId       String
+  productId      String
+  /// Official master price at the time, or the shop price for items not on the master list.
+  oldPrice       Decimal            @db.Decimal(12, 2)
+  /// Retail price printed on the received batch.
+  newPrice       Decimal            @db.Decimal(12, 2)
+  source         String
+  batchId        String?
+  purchaseId     String?
+  reportedById   String?
+  status         PriceReportStatus  @default(PENDING)
+  createdAt      DateTime           @default(now())
+  branch         Branch             @relation(fields: [branchId], references: [id])
+  product        Product            @relation(fields: [productId], references: [id])
+  batch          Batch?             @relation(fields: [batchId], references: [id])
+  purchase       Purchase?          @relation(fields: [purchaseId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([branchId, productId])
+}
+
+enum PriceReportStatus {
+  PENDING
+  REVIEWED
+  PUBLISHED
+  DISMISSED
+}
+
+model Sale {
+  id            String        @id @default(cuid())
+  branchId      String
+  userId        String
+  customerId    String?
+  idempotencyKey String?       @unique
+  /// Set for sales recorded on a POS device, which numbers its own receipts.
+  deviceId      String?
+  shiftId       String?
+  receiptNo     String?
+  subtotal      Decimal       @db.Decimal(12, 2)
+  discount      Decimal       @default(0) @db.Decimal(12, 2)
+  total         Decimal       @db.Decimal(12, 2)
+  paymentMethod PaymentMethod
+  status        SaleStatus    @default(COMPLETED)
+  voidedAt      DateTime?
+  voidedById    String?
+  voidReason    String?
+  createdAt     DateTime      @default(now())
+  /// When the server received it; differs from createdAt for sales made offline.
+  receivedAt    DateTime      @default(now())
+  branch        Branch        @relation(fields: [branchId], references: [id])
+  user          User          @relation(fields: [userId], references: [id])
+  customer      Customer?     @relation(fields: [customerId], references: [id])
+  shift         Shift?        @relation(fields: [shiftId], references: [id])
+  lines         SaleLine[]
+  returns       SaleReturn[]
+  controlledDrugRecords ControlledDrugRecord[]
+
+  @@unique([branchId, receiptNo])
+  @@index([branchId, createdAt])
+  @@index([shiftId])
+}
+
+model Customer {
+  id            String                @id @default(cuid())
+  branchId      String
+  name          String
+  phone         String?
+  creditLimit   Decimal               @default(0) @db.Decimal(12, 2)
+  createdAt     DateTime              @default(now())
+  branch        Branch                @relation(fields: [branchId], references: [id])
+  sales         Sale[]
+  ledger        CustomerLedgerEntry[]
+
+  @@unique([branchId, phone])
+  @@index([branchId, name])
+}
+
+model CustomerLedgerEntry {
+  id          String              @id @default(cuid())
+  branchId    String
+  customerId  String
+  userId      String
+  type        CustomerLedgerType
+  amount      Decimal             @db.Decimal(12, 2)
+  note        String?
+  saleId      String?
+  createdAt   DateTime            @default(now())
+  branch      Branch              @relation(fields: [branchId], references: [id])
+  customer    Customer            @relation(fields: [customerId], references: [id])
+  user        User                @relation(fields: [userId], references: [id])
+
+  @@index([customerId, createdAt])
+}
+
+enum CustomerLedgerType {
+  CREDIT_SALE
+  PAYMENT
+  ADJUSTMENT
+  CREDIT_RETURN
+}
+
+model SupplierLedgerEntry {
+  id          String              @id @default(cuid())
+  branchId    String
+  supplierId  String
+  userId      String
+  type        SupplierLedgerType
+  amount      Decimal             @db.Decimal(12, 2)
+  note        String?
+  purchaseId  String?
+  createdAt   DateTime            @default(now())
+  branch      Branch             @relation(fields: [branchId], references: [id])
+  supplier    Supplier            @relation(fields: [supplierId], references: [id])
+  user        User               @relation(fields: [userId], references: [id])
+  purchase    Purchase?           @relation(fields: [purchaseId], references: [id])
+
+  @@index([supplierId, createdAt])
+}
+
+enum SupplierLedgerType {
+  PURCHASE
+  PAYMENT
+  ADJUSTMENT
+}
+
+model ControlledDrugRecord {
+  id            String   @id @default(cuid())
+  branchId      String
+  userId        String
+  saleId        String?
+  productId     String
+  patientName   String
+  doctorName    String
+  quantity      Int
+  notes         String?
+  createdAt     DateTime @default(now())
+  branch        Branch   @relation(fields: [branchId], references: [id])
+  user          User     @relation(fields: [userId], references: [id])
+  sale          Sale?    @relation(fields: [saleId], references: [id])
+  product       Product  @relation(fields: [productId], references: [id])
+
+  @@index([branchId, createdAt])
+}
+
+model Shift {
+  id           String      @id @default(cuid())
+  branchId     String
+  userId       String
+  deviceId     String?
+  status       ShiftStatus @default(OPEN)
+  openingCash  Decimal     @db.Decimal(12, 2)
+  closingCash  Decimal?    @db.Decimal(12, 2)
+  /// End-of-day figures computed at the counter when the shift closed.
+  closingReport Json?
+  openedAt     DateTime    @default(now())
+  closedAt     DateTime?
+  branch       Branch      @relation(fields: [branchId], references: [id])
+  user         User        @relation(fields: [userId], references: [id])
+  sales        Sale[]
+
+  @@index([branchId, status])
+}
+
+enum ShiftStatus {
+  OPEN
+  CLOSED
+}
+
+model HeldBill {
+  id         String   @id @default(cuid())
+  branchId   String
+  userId     String
+  label      String?
+  payload    Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  branch     Branch   @relation(fields: [branchId], references: [id])
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@index([branchId, updatedAt])
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  CREDIT
+}
+
+enum SaleStatus {
+  COMPLETED
+  VOIDED
+  RETURNED
+}
+
+model SaleLine {
+  id         String   @id @default(cuid())
+  saleId     String
+  productId  String
+  batchId    String?
+  quantity   Int
+  unit       SaleUnit
+  unitPrice  Decimal  @db.Decimal(12, 2)
+  discount   Decimal  @default(0) @db.Decimal(12, 2)
+  lineTotal  Decimal  @db.Decimal(12, 2)
+  sale       Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product    Product  @relation(fields: [productId], references: [id])
+  batch      Batch?   @relation(fields: [batchId], references: [id])
+  returnLines SaleReturnLine[]
+
+  @@index([saleId])
+  @@index([productId])
+}
+
+enum SaleUnit {
+  PACK
+  STRIP
+  TABLET
+}
+
+enum ProductCategory {
+  MEDICINE
+  COSMETIC
+  SURGICAL
+  BABY
+  GENERAL
+}
+
+/// Goods brought back against a sale. Stock goes back to the batch it was sold from.
+model SaleReturn {
+  id           String        @id @default(cuid())
+  saleId       String
+  branchId     String
+  userId       String
+  deviceId     String?
+  reason       String
+  refundMethod PaymentMethod
+  refundAmount Decimal       @db.Decimal(12, 2)
+  createdAt    DateTime      @default(now())
+  sale         Sale          @relation(fields: [saleId], references: [id])
+  user         User          @relation(fields: [userId], references: [id])
+  lines        SaleReturnLine[]
+
+  @@index([branchId, createdAt])
+  @@index([saleId])
+}
+
+model SaleReturnLine {
+  id         String     @id @default(cuid())
+  returnId   String
+  saleLineId String
+  quantity   Int
+  amount     Decimal    @db.Decimal(12, 2)
+  saleReturn SaleReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  saleLine   SaleLine   @relation(fields: [saleLineId], references: [id])
+
+  @@index([saleLineId])
+}
