@@ -1,0 +1,22 @@
+{
+  "name": "@pharmica/domain",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Pharmacy business rules shared by the API and the offline POS: units, pricing, FEFO, discounts, shift reports.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@pharmica/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "vitest": "^5.0.3"
+  }
+}
