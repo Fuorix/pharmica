@@ -1,0 +1,50 @@
+import type { PosSnapshot } from "@pharmica/contracts";
+import { db } from "@pharmica/database/client";
+import { ledgerBalance } from "@pharmica/domain";
+import { authenticateDevice } from "../../../../../src/auth/authorization";
+import { toRoleName } from "../../../../../src/auth/session";
+import { catalogueInclude, toCatalogueProduct } from "../../../../../src/catalogue/catalogue";
+import { apiError } from "../../../../../src/lib/api-response";
+import { corsOptions, withCors } from "../../../../../src/lib/cors";
+
+export function OPTIONS(request: Request): Response { return corsOptions(request); }
+
+/** Everything an activated counter needs to bill offline: catalogue, stock by batch, customers, and staff. */
+export async function GET(request: Request): Promise<Response> {
+  const device = await authenticateDevice(request);
+  if (!device) return withCors(apiError(401, "DEVICE_NOT_ACTIVATED", "This POS device is not activated or has been deactivated"), request);
+  const branchId = device.branchId;
+  const now = new Date();
+
+  const [organisation, staff, products, customers, suppliers] = await Promise.all([
+    db.organisation.findUniqueOrThrow({ where: { id: device.branch.organisationId } }),
+    db.user.findMany({
+      where: { organisationId: device.branch.organisationId, isActive: true, pinHash: { not: null }, role: { in: ["OWNER", "CASHIER"] }, OR: [{ branchId: null }, { branchId }] },
+      select: { id: true, name: true, role: true, maxDiscountPercent: true },
+      orderBy: { name: "asc" }
+    }),
+    db.product.findMany({ where: { branchId, isActive: true }, include: catalogueInclude, orderBy: { name: "asc" } }),
+    db.customer.findMany({ where: { branchId }, include: { ledger: { select: { type: true, amount: true } } }, orderBy: { name: "asc" } }),
+    db.supplier.findMany({ where: { branchId }, select: { id: true, name: true }, orderBy: { name: "asc" } })
+  ]);
+  await db.device.update({ where: { id: device.id }, data: { lastSeenAt: now } });
+
+  const snapshot: PosSnapshot = {
+    generatedAt: now.toISOString(),
+    device: { id: device.id, name: device.name, branchId, branchName: device.branch.name },
+    organisationName: organisation.name,
+    staff: staff.map((member) => ({ id: member.id, name: member.name, role: toRoleName(member.role), maxDiscountPercent: member.role === "OWNER" ? null : member.maxDiscountPercent })),
+    products: products.map((product) => toCatalogueProduct(product, now)),
+    batches: products.flatMap((product) => product.batches.map((batch) => ({
+      id: batch.id,
+      productId: product.id,
+      batchNo: batch.batchNo,
+      expiryDate: batch.expiryDate.toISOString(),
+      quantity: batch.quantity,
+      retailPrice: Number(batch.retailPrice)
+    }))),
+    customers: customers.map(({ ledger, ...customer }) => ({ id: customer.id, name: customer.name, phone: customer.phone, creditLimit: Number(customer.creditLimit), balance: ledgerBalance(ledger) })),
+    suppliers
+  };
+  return withCors(Response.json(snapshot, { headers: { "x-api-version": "v1" } }), request);
+}
