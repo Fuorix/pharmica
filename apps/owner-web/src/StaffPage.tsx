@@ -1,0 +1,101 @@
+import { FormEvent, useCallback, useEffect, useState } from "react";
+import { apiFetch, errorMessage, jsonBody, useOwnerSession } from "./session";
+
+type Branch = { id: string; name: string };
+type StaffUser = { id: string; name: string; login: string; role: "owner" | "cashier"; branchId: string | null; isActive: boolean; hasPin: boolean; maxDiscountPercent: number | null };
+type Device = { id: string; name: string; branchId: string; activationCode: string; activatedAt: string | null; isActive: boolean; lastSeenAt: string | null };
+
+const emptyUser = { name: "", login: "", role: "cashier" as "cashier" | "owner", branchId: "", pin: "", credential: "", maxDiscountPercent: "5" };
+
+export function StaffPage({ branches }: { branches: Branch[] }) {
+  const { user: me } = useOwnerSession();
+  const [users, setUsers] = useState<StaffUser[]>([]);
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [message, setMessage] = useState("");
+  const [newUser, setNewUser] = useState({ ...emptyUser, branchId: branches[0]?.id ?? "" });
+  const [newDevice, setNewDevice] = useState({ name: "", branchId: branches[0]?.id ?? "" });
+  const branchName = (id: string | null) => id ? branches.find((branch) => branch.id === id)?.name ?? "Unknown branch" : "All branches";
+
+  const load = useCallback(async () => {
+    const [userResponse, deviceResponse] = await Promise.all([apiFetch("/api/v1/users"), apiFetch("/api/v1/devices")]);
+    if (userResponse.ok) setUsers((await userResponse.json()).users);
+    if (deviceResponse.ok) setDevices((await deviceResponse.json()).devices);
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function send(path: string, method: string, body: unknown, success: string) {
+    const response = await apiFetch(path, { method, ...jsonBody(body) });
+    setMessage(response.ok ? success : await errorMessage(response, "Request failed"));
+    if (response.ok) await load();
+    return response.ok;
+  }
+
+  async function addUser(event: FormEvent) {
+    event.preventDefault();
+    const body = newUser.role === "cashier"
+      ? { name: newUser.name, login: newUser.login, role: "cashier", branchId: newUser.branchId, pin: newUser.pin, maxDiscountPercent: Number(newUser.maxDiscountPercent || 0) }
+      : { name: newUser.name, login: newUser.login, role: "owner", credential: newUser.credential, ...(newUser.pin ? { pin: newUser.pin } : {}) };
+    if (await send("/api/v1/users", "POST", body, `${newUser.name} added`)) setNewUser({ ...emptyUser, branchId: newUser.branchId });
+  }
+
+  function resetPin(member: StaffUser) {
+    const pin = window.prompt(`New 4-6 digit PIN for ${member.name}`);
+    if (pin) void send("/api/v1/users", "PATCH", { userId: member.id, pin }, `PIN changed for ${member.name}; their open sessions were signed out`);
+  }
+
+  function setDiscountLimit(member: StaffUser) {
+    const input = window.prompt(`Largest discount ${member.name} may give, as % of the bill (0-100)`, String(member.maxDiscountPercent ?? 0));
+    if (input === null) return;
+    const percent = Number(input);
+    if (!Number.isInteger(percent) || percent < 0 || percent > 100) return setMessage("Enter a whole percent from 0 to 100");
+    void send("/api/v1/users", "PATCH", { userId: member.id, maxDiscountPercent: percent }, `${member.name} can now give up to ${percent}% discount`);
+  }
+
+  async function addDevice(event: FormEvent) {
+    event.preventDefault();
+    if (await send("/api/v1/devices", "POST", newDevice, `${newDevice.name} registered. Enter its activation code on the counter PC`)) setNewDevice({ ...newDevice, name: "" });
+  }
+
+  return <>
+    <div className="page-heading"><h1>Staff & devices</h1><span className="page-note">{message}</span></div>
+    <section className="content-grid">
+      <article className="panel">
+        <div className="panel-heading"><h2>Staff</h2><span>{users.length} people</span></div>
+        {users.map((member) => <div className={member.isActive ? "staff-row" : "staff-row inactive"} key={member.id}>
+          <div><strong>{member.name}{member.id === me.id ? " (you)" : ""}</strong><span>{member.login} · {member.role} · {branchName(member.branchId)}{member.hasPin ? " · PIN set" : " · no PIN"}{member.role === "cashier" ? ` · discount up to ${member.maxDiscountPercent ?? 0}%` : ""}</span></div>
+          <div className="row-actions">
+            <button className="secondary" onClick={() => resetPin(member)}>{member.hasPin ? "Reset PIN" : "Set PIN"}</button>
+            {member.role === "cashier" && <button className="secondary" onClick={() => setDiscountLimit(member)}>Discount limit</button>}
+            {member.id !== me.id && <button className="secondary" onClick={() => void send("/api/v1/users", "PATCH", { userId: member.id, isActive: !member.isActive }, `${member.name} ${member.isActive ? "deactivated and signed out" : "reactivated"}`)}>{member.isActive ? "Deactivate" : "Reactivate"}</button>}
+          </div>
+        </div>)}
+        <form className="inventory-form" onSubmit={addUser}>
+          <select value={newUser.role} onChange={(event) => setNewUser({ ...newUser, role: event.target.value as "cashier" | "owner" })}><option value="cashier">Cashier (PIN only)</option><option value="owner">Owner (web + PIN)</option></select>
+          <input required placeholder="Full name" value={newUser.name} onChange={(event) => setNewUser({ ...newUser, name: event.target.value })} />
+          <input required placeholder={newUser.role === "owner" ? "Email or login" : "Login (e.g. ali.counter)"} value={newUser.login} onChange={(event) => setNewUser({ ...newUser, login: event.target.value })} />
+          {newUser.role === "cashier" && <select required value={newUser.branchId} onChange={(event) => setNewUser({ ...newUser, branchId: event.target.value })}>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select>}
+          {newUser.role === "owner" && <input required type="password" minLength={8} placeholder="Password (8+ characters)" value={newUser.credential} onChange={(event) => setNewUser({ ...newUser, credential: event.target.value })} />}
+          {newUser.role === "cashier" && <input inputMode="numeric" placeholder="Discount limit % (e.g. 5)" value={newUser.maxDiscountPercent} onChange={(event) => setNewUser({ ...newUser, maxDiscountPercent: event.target.value.replace(/D/g, "").slice(0, 3) })} />}
+          <input required={newUser.role === "cashier"} inputMode="numeric" pattern="\d{4,6}" placeholder={newUser.role === "cashier" ? "PIN (4-6 digits)" : "POS PIN (optional)"} value={newUser.pin} onChange={(event) => setNewUser({ ...newUser, pin: event.target.value.replace(/\D/g, "") })} />
+          <button type="submit">Add staff member</button>
+        </form>
+      </article>
+      <article className="panel">
+        <div className="panel-heading"><h2>POS devices</h2><span>{devices.filter((device) => device.isActive).length} active</span></div>
+        {devices.map((device) => <div className={device.isActive ? "staff-row" : "staff-row inactive"} key={device.id}>
+          <div><strong>{device.name}</strong><span>{branchName(device.branchId)} · {device.activatedAt ? `activated, last seen ${device.lastSeenAt ? new Date(device.lastSeenAt).toLocaleString() : "never"}` : <>activation code <code>{device.activationCode}</code></>}</span></div>
+          <div className="row-actions">
+            {device.activatedAt && <button className="secondary" onClick={() => window.confirm(`Reset ${device.name}? The counter will need a new activation code.`) && void send("/api/v1/devices", "PATCH", { deviceId: device.id, resetActivation: true }, `${device.name} reset; a new activation code is shown`)}>Reset</button>}
+            <button className="secondary" onClick={() => void send("/api/v1/devices", "PATCH", { deviceId: device.id, isActive: !device.isActive }, `${device.name} ${device.isActive ? "deactivated; it can no longer sell" : "reactivated"}`)}>{device.isActive ? "Deactivate" : "Reactivate"}</button>
+          </div>
+        </div>)}
+        <form className="inventory-form" onSubmit={addDevice}>
+          <input required placeholder="Device name (e.g. Counter 2)" value={newDevice.name} onChange={(event) => setNewDevice({ ...newDevice, name: event.target.value })} />
+          <select required value={newDevice.branchId} onChange={(event) => setNewDevice({ ...newDevice, branchId: event.target.value })}>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select>
+          <button type="submit">Register device</button>
+        </form>
+      </article>
+    </section>
+  </>;
+}
