@@ -1,0 +1,18 @@
+/* Thermal receipts: only the print area is printed. Paper width (58/80mm) is set at print time. */
+@media print {
+  body { background: #fff !important; }
+  body * { visibility: hidden; }
+  .print-area, .print-area * { visibility: visible; }
+  .print-area { display: block !important; position: absolute; left: 0; top: 0; }
+  .print-root { color: #000; font: 11px/1.35 "Courier New", ui-monospace, monospace; }
+  .print-root p { margin: 2mm 0; }
+  .print-top { display: flex; flex-direction: column; align-items: center; text-align: center; border-bottom: 1px dashed #000; padding-bottom: 2mm; }
+  .print-top strong { font-size: 14px; }
+  .print-root table { width: 100%; border-collapse: collapse; }
+  .print-root td { padding: 0.6mm 0; vertical-align: top; }
+  .print-root td:last-child { text-align: right; white-space: nowrap; padding-left: 2mm; }
+  .print-root td small { display: block; font-size: 9.5px; }
+  .print-root tr.rule td { border-top: 1px dashed #000; padding-top: 1.5mm; }
+  .print-root .items { border-bottom: 1px dashed #000; }
+  .print-foot { text-align: center; border-top: 1px dashed #000; padding-top: 2mm; }
+}
