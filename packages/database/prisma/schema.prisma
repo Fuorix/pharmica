@@ -268,6 +268,8 @@ model Supplier {
   branchId    String
   name        String
   phone       String?
+  address     String?
+  isActive    Boolean    @default(true)
   createdAt   DateTime   @default(now())
   branch      Branch     @relation(fields: [branchId], references: [id])
   purchases   Purchase[]
@@ -432,7 +434,9 @@ model Customer {
   branchId      String
   name          String
   phone         String?
-  creditLimit   Decimal               @default(0) @db.Decimal(12, 2)
+  /// Most this customer may owe on credit. 0 (the default) allows no credit; null means no limit.
+  creditLimit   Decimal?              @default(0) @db.Decimal(12, 2)
+  isActive      Boolean               @default(true)
   createdAt     DateTime              @default(now())
   branch        Branch                @relation(fields: [branchId], references: [id])
   sales         Sale[]
@@ -448,7 +452,12 @@ model CustomerLedgerEntry {
   customerId  String
   userId      String
   type        CustomerLedgerType
+  /// Always positive, except ADJUSTMENT, whose sign says whether it adds to or reduces what is owed.
   amount      Decimal             @db.Decimal(12, 2)
+  /// How a PAYMENT was made (cash counts in the shift's drawer).
+  paymentMethod PaymentMethod?
+  deviceId    String?
+  shiftId     String?
   note        String?
   saleId      String?
   createdAt   DateTime            @default(now())
@@ -472,7 +481,12 @@ model SupplierLedgerEntry {
   supplierId  String
   userId      String
   type        SupplierLedgerType
+  /// Always positive, except ADJUSTMENT, whose sign says whether it adds to or reduces what is owed.
   amount      Decimal             @db.Decimal(12, 2)
+  /// How a PAYMENT was made: cash, bank transfer, or cheque.
+  method      String?
+  /// Cheque number, bank transaction id, or similar.
+  reference   String?
   note        String?
   purchaseId  String?
   createdAt   DateTime            @default(now())
@@ -490,23 +504,44 @@ enum SupplierLedgerType {
   ADJUSTMENT
 }
 
+/// Narcotics register. Entries are written only by sales (and their voids or returns) and can never be
+/// changed or deleted: a database trigger rejects UPDATE and DELETE. Corrections are new REVERSAL entries.
 model ControlledDrugRecord {
-  id            String   @id @default(cuid())
-  branchId      String
-  userId        String
-  saleId        String?
-  productId     String
-  patientName   String
-  doctorName    String
-  quantity      Int
-  notes         String?
-  createdAt     DateTime @default(now())
-  branch        Branch   @relation(fields: [branchId], references: [id])
-  user          User     @relation(fields: [userId], references: [id])
-  sale          Sale?    @relation(fields: [saleId], references: [id])
-  product       Product  @relation(fields: [productId], references: [id])
+  id              String   @id @default(cuid())
+  branchId        String
+  userId          String
+  deviceId        String?
+  entryType       ControlledEntryType @default(ENTRY)
+  saleId          String?
+  saleLineId      String?
+  /// For a REVERSAL: the entry it reverses.
+  reversesId      String?
+  productId       String
+  batchId         String?
+  unit            SaleUnit @default(PACK)
+  /// Units in `unit`; negative for a REVERSAL.
+  quantity        Int
+  patientName     String
+  patientPhone    String?
+  doctorName      String
+  /// PMDC or other registration number of the prescribing doctor.
+  doctorRegNo     String?
+  /// Prescription number or reference written on the slip.
+  prescriptionRef String?
+  notes           String?
+  createdAt       DateTime @default(now())
+  branch          Branch   @relation(fields: [branchId], references: [id])
+  user            User     @relation(fields: [userId], references: [id])
+  sale            Sale?    @relation(fields: [saleId], references: [id])
+  product         Product  @relation(fields: [productId], references: [id])
 
   @@index([branchId, createdAt])
+  @@index([saleId])
+}
+
+enum ControlledEntryType {
+  ENTRY
+  REVERSAL
 }
 
 model Shift {

@@ -235,7 +235,8 @@ export interface CustomerSummary {
   id: string;
   name: string;
   phone: string | null;
-  creditLimit: number;
+  /** Most this customer may owe on credit: 0 means no credit allowed, null means no limit. */
+  creditLimit: number | null;
   balance: number;
 }
 
@@ -281,9 +282,12 @@ export interface PosCustomer {
   id: string;
   name: string;
   phone: string | null;
-  creditLimit: number;
+  /** Most this customer may owe on credit: 0 means no credit allowed, null means no limit. */
+  creditLimit: number | null;
   /** Amount owed according to the server. */
   balance: number;
+  /** Days since the oldest unpaid credit sale (0 when nothing is owed). */
+  daysOutstanding: number;
 }
 
 export interface PosSnapshot {
@@ -318,6 +322,17 @@ export interface PosSalePayload {
   /** The total the customer was charged, for cross-checking. */
   total: number;
   lines: PosSaleLine[];
+  /** Required when the bill has a controlled (scheduled) drug: recorded in the narcotics register. */
+  prescription?: Prescription;
+}
+
+export interface Prescription {
+  patientName: string;
+  patientPhone?: string;
+  doctorName: string;
+  /** PMDC or other registration number of the prescribing doctor. */
+  doctorRegNo?: string;
+  prescriptionRef?: string;
 }
 
 interface PosOperationBase<Type extends string, Payload> {
@@ -332,7 +347,7 @@ interface PosOperationBase<Type extends string, Payload> {
 export type PosOperation =
   | PosOperationBase<"shift.open", { shiftId: string; openingCash: number }>
   | PosOperationBase<"shift.close", { shiftId: string; closingCash: number; report: unknown }>
-  | PosOperationBase<"customer.create", { customerId: string; name: string; phone?: string; creditLimit?: number }>
+  | PosOperationBase<"customer.create", { customerId: string; name: string; phone?: string; creditLimit?: number | null }>
   | PosOperationBase<"sale", PosSalePayload>
   | PosOperationBase<"sale.void", { saleId: string; reason: string }>
   | PosOperationBase<"sale.return", { returnId: string; saleId: string; reason: string; refundMethod: PaymentMethod; lines: Array<{ saleLineId: string; quantity: number }> }>
@@ -342,6 +357,8 @@ export type PosOperation =
   /** `expected` is what the counter showed when counting; the difference is applied, so sales elsewhere are not undone. */
   | PosOperationBase<"stock.count", { countId: string; reason: string; lines: Array<{ batchId: string; expected: number; counted: number }> }>
   | PosOperationBase<"product.update", { productId: string; rackLocation?: string | null; lowStockThreshold?: number }>
+  /** A customer pays back credit (udhaar) at the counter. Cash counts in the shift's drawer. */
+  | PosOperationBase<"customer.payment", { paymentId: string; customerId: string; amount: number; method: "cash" | "card"; shiftId?: string; note?: string }>
   | PosOperationBase<"audit", { action: string; entityType: string; entityId?: string; metadata?: Record<string, unknown> }>;
 
 export type PosOperationType = PosOperation["type"];
@@ -352,4 +369,70 @@ export interface PosSyncResult {
   error?: { code: string; message: string };
   /** Accepted, but something needs the owner's attention (e.g. stock oversold between counters). */
   flags?: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Credit (receivables), suppliers (payables), and the narcotics register.
+// ---------------------------------------------------------------------------
+
+export interface AgeBuckets {
+  current: number;
+  days31to60: number;
+  days61to90: number;
+  over90: number;
+}
+
+export interface ReceivableSummary {
+  id: string;
+  name: string;
+  phone: string | null;
+  /** Most this customer may owe on credit: 0 means no credit allowed, null means no limit. */
+  creditLimit: number | null;
+  isActive: boolean;
+  balance: number;
+  daysOutstanding: number;
+  buckets: AgeBuckets;
+}
+
+export interface PayableSummary {
+  id: string;
+  name: string;
+  phone: string | null;
+  address: string | null;
+  isActive: boolean;
+  balance: number;
+  daysOutstanding: number;
+  buckets: AgeBuckets;
+}
+
+export interface LedgerLine {
+  id: string;
+  at: string;
+  type: string;
+  /** Effect on the balance: positive adds to what is owed. */
+  amount: number;
+  balanceAfter: number;
+  note: string | null;
+  by: string;
+  method: string | null;
+  reference: string | null;
+}
+
+export interface ControlledRegisterEntry {
+  id: string;
+  at: string;
+  entryType: "ENTRY" | "REVERSAL";
+  productName: string;
+  batchNo: string | null;
+  unit: SaleUnit;
+  /** Negative for a reversal. */
+  quantity: number;
+  patientName: string;
+  patientPhone: string | null;
+  doctorName: string;
+  doctorRegNo: string | null;
+  prescriptionRef: string | null;
+  recordedBy: string;
+  receiptNo: string | null;
+  reversesId: string | null;
 }

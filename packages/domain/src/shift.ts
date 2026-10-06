@@ -23,7 +23,9 @@ export interface ShiftReport {
   discounts: number;
   byMethod: Record<PaymentMethod, number>;
   refunds: Record<PaymentMethod, number>;
-  /** Opening cash + cash sales - cash refunds. */
+  /** Credit (udhaar) repayments received during the shift, by method. */
+  collections: Record<PaymentMethod, number>;
+  /** Opening cash + cash sales + cash repayments - cash refunds. */
   expectedCash: number;
   countedCash: number | null;
   /** Counted minus expected; negative means cash is short. */
@@ -33,14 +35,17 @@ export interface ShiftReport {
 const emptyByMethod = (): Record<PaymentMethod, number> => ({ cash: 0, card: 0, credit: 0 });
 
 /** End-of-day closing figures for one shift. */
-export function computeShiftReport(input: { openingCash: number; sales: ShiftSaleRecord[]; refunds: ShiftRefundRecord[]; countedCash?: number | null }): ShiftReport {
+export function computeShiftReport(input: { openingCash: number; sales: ShiftSaleRecord[]; refunds: ShiftRefundRecord[]; collections?: ShiftRefundRecord[]; countedCash?: number | null }): ShiftReport {
   const completed = input.sales.filter((sale) => !sale.voided);
   const byMethod = emptyByMethod();
   for (const sale of completed) byMethod[sale.paymentMethod] = roundMoney(byMethod[sale.paymentMethod] + sale.total);
   const refunds = emptyByMethod();
   for (const refund of input.refunds) refunds[refund.method] = roundMoney(refunds[refund.method] + refund.amount);
 
-  const expectedCash = roundMoney(input.openingCash + byMethod.cash - refunds.cash);
+  const collections = emptyByMethod();
+  for (const payment of input.collections ?? []) collections[payment.method] = roundMoney(collections[payment.method] + payment.amount);
+
+  const expectedCash = roundMoney(input.openingCash + byMethod.cash + collections.cash - refunds.cash);
   const countedCash = input.countedCash ?? null;
   return {
     openingCash: input.openingCash,
@@ -51,6 +56,7 @@ export function computeShiftReport(input: { openingCash: number; sales: ShiftSal
     discounts: roundMoney(completed.reduce((sum, sale) => sum + sale.discount, 0)),
     byMethod,
     refunds,
+    collections,
     expectedCash,
     countedCash,
     variance: countedCash == null ? null : roundMoney(countedCash - expectedCash)
