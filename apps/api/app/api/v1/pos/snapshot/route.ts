@@ -1,6 +1,6 @@
 import type { PosSnapshot } from "@pharmica/contracts";
 import { db } from "@pharmica/database/client";
-import { ledgerBalance } from "@pharmica/domain";
+import { ageLedger } from "@pharmica/domain";
 import { authenticateDevice } from "../../../../../src/auth/authorization";
 import { toRoleName } from "../../../../../src/auth/session";
 import { catalogueInclude, toCatalogueProduct } from "../../../../../src/catalogue/catalogue";
@@ -24,7 +24,7 @@ export async function GET(request: Request): Promise<Response> {
       orderBy: { name: "asc" }
     }),
     db.product.findMany({ where: { branchId, isActive: true }, include: catalogueInclude, orderBy: { name: "asc" } }),
-    db.customer.findMany({ where: { branchId }, include: { ledger: { select: { type: true, amount: true } } }, orderBy: { name: "asc" } }),
+    db.customer.findMany({ where: { branchId, isActive: true }, include: { ledger: { select: { type: true, amount: true, createdAt: true } } }, orderBy: { name: "asc" } }),
     db.supplier.findMany({ where: { branchId }, select: { id: true, name: true }, orderBy: { name: "asc" } })
   ]);
   await db.device.update({ where: { id: device.id }, data: { lastSeenAt: now } });
@@ -43,7 +43,10 @@ export async function GET(request: Request): Promise<Response> {
       quantity: batch.quantity,
       retailPrice: Number(batch.retailPrice)
     }))),
-    customers: customers.map(({ ledger, ...customer }) => ({ id: customer.id, name: customer.name, phone: customer.phone, creditLimit: Number(customer.creditLimit), balance: ledgerBalance(ledger) })),
+    customers: customers.map(({ ledger, ...customer }) => {
+      const aged = ageLedger(ledger, now);
+      return { id: customer.id, name: customer.name, phone: customer.phone, creditLimit: (customer.creditLimit == null ? null : Number(customer.creditLimit)), balance: aged.balance, daysOutstanding: aged.daysOutstanding };
+    }),
     suppliers
   };
   return withCors(Response.json(snapshot, { headers: { "x-api-version": "v1" } }), request);

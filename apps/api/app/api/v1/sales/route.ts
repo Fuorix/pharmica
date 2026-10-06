@@ -1,5 +1,5 @@
 import type { PaymentMethod, SaleSummary } from "@pharmica/contracts";
-import { ledgerBalance } from "@pharmica/domain";
+import { ledgerBalance, withinCreditLimit } from "@pharmica/domain";
 import { db } from "@pharmica/database/client";
 import { z } from "zod";
 import { recordAudit, requireAuth, requireBranch } from "../../../../src/auth/authorization";
@@ -85,7 +85,7 @@ export async function POST(request: Request): Promise<Response> {
       if (body.paymentMethod === "credit" && customer) {
         const entries = await transaction.customerLedgerEntry.findMany({ where: { customerId: customer.id }, select: { type: true, amount: true } });
         const balance = ledgerBalance(entries);
-        if (Number(customer.creditLimit) > 0 && balance + total > Number(customer.creditLimit)) throw new SaleError(409, "CREDIT_LIMIT_EXCEEDED", "Customer credit limit would be exceeded");
+        if (!withinCreditLimit(balance + total, customer.creditLimit == null ? null : Number(customer.creditLimit))) throw new SaleError(409, "CREDIT_LIMIT_EXCEEDED", "Customer credit limit would be exceeded");
       }
 
       const created = await transaction.sale.create({

@@ -71,7 +71,7 @@ describe("role and tenant boundaries", () => {
     ["GET", "/api/v1/devices"], ["POST", "/api/v1/devices"], ["PATCH", "/api/v1/devices"],
     ["GET", "/api/v1/audit-logs"], ["GET", "/api/v1/suppliers"], ["GET", "/api/v1/price-reports"],
     ["GET", "/api/v1/catalogue/master"], ["POST", "/api/v1/catalogue"], ["PATCH", "/api/v1/catalogue"], ["POST", "/api/v1/catalogue/master"], ["GET", "/api/v1/controlled-drugs"],
-    ["GET", "/api/v1/sync/conflicts"], ["GET", "/api/v1/purchases"], ["POST", "/api/v1/purchases"], ["PATCH", "/api/v1/inventory"], ["GET", "/api/v1/inventory/ledger"]
+    ["GET", "/api/v1/sync/conflicts"], ["GET", "/api/v1/purchases"], ["POST", "/api/v1/purchases"], ["PATCH", "/api/v1/inventory"], ["GET", "/api/v1/inventory/ledger"], ["PATCH", "/api/v1/customers"], ["POST", "/api/v1/suppliers"], ["PATCH", "/api/v1/suppliers"]
   ];
 
   it.each(ownerOnly)("forbids cashiers: %s %s", async (method, path) => {
