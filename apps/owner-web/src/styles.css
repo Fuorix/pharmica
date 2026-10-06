@@ -27,3 +27,23 @@
 .purchase-item { border-top: 1px solid #e4dfd3; padding: 10px 0; }
 .purchase-item summary { cursor: pointer; display: flex; flex-direction: column; gap: 3px; }
 .purchase-item summary span { color: #5f6a62; font-size: 13px; }
+.account-row { grid-template-columns: minmax(200px, 2fr) 120px 110px 110px minmax(200px, 2fr); }
+.catalogue-row.inactive { opacity: .55; }
+.ageing { display: flex; flex-wrap: wrap; gap: 4px; }
+.ageing em { font-style: normal; font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #eef3ea; color: #1c563f; }
+.ageing .age-1 { background: #fbf1df; color: #8a5a1c; }
+.ageing .age-2, .ageing .age-3 { background: #f8e4dc; color: #b2512f; }
+.detail-table td.credit { color: #1c563f; }
+.detail-table tr.reversal td { color: #b2512f; }
+.register small { display: block; color: #5f6a62; }
+.filter-bar label { display: flex; align-items: center; gap: 6px; font-size: 14px; color: #5f6a62; }
+.filter-bar label input { padding: 8px; border: 1px solid #d8d2c4; border-radius: 6px; }
+.print-only { display: none; }
+@media print {
+  .no-print, .tabs, .account { display: none !important; }
+  .print-only { display: block; font-family: Georgia, serif; font-weight: 500; }
+  .shell { padding: 0; }
+  .panel { border: 0; padding: 0; }
+}
+
+.inventory-form label.check { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #5f6a62; }
