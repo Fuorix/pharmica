@@ -202,3 +202,6 @@ h1 { font-size: 30px; }
   .receive-head, .draft-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .stock-layout { grid-template-columns: 1fr; }
 }
+
+.dialog label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-size: 14px; }
+.dialog label.check input { width: auto; }

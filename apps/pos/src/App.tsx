@@ -1,11 +1,11 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CatalogueProduct, PaymentMethod, SaleUnit } from "@pharmica/contracts";
+import type { CatalogueProduct, PaymentMethod, Prescription, SaleUnit } from "@pharmica/contracts";
 import { billTotals, discountWithinLimit, priceCart, type CartItem } from "@pharmica/domain";
 import { PosError } from "./local/engine";
 import { searchCatalogue, substitutesFor } from "./local/state";
 import type { LocalSale } from "./local/types";
 import { usePosSession, useEngineState } from "./session";
-import { CustomerDialog, DiscountDialog, HeldDialog, HelpDialog, PaymentDialog, SubstitutesDialog, SyncDialog } from "./ui/dialogs";
+import { CustomerDialog, DiscountDialog, HeldDialog, HelpDialog, PaymentDialog, PrescriptionDialog, SubstitutesDialog, SyncDialog } from "./ui/dialogs";
 import { money, stockLabel, unitLabel } from "./ui/format";
 import { Printable, printNow, type PrintJob } from "./ui/Printable";
 import { SalesDialog } from "./ui/SalesDialog";
@@ -18,7 +18,7 @@ const MODES: Array<{ value: Mode; label: string; key: string }> = [{ value: "bil
 
 type DialogState =
   | null
-  | { kind: "help" | "payment" | "customer" | "held" | "sales" | "shift" | "sync" }
+  | { kind: "help" | "payment" | "customer" | "held" | "sales" | "shift" | "sync" | "prescription" }
   | { kind: "discount"; target: "item" | "bill" }
   | { kind: "substitutes"; product: CatalogueProduct };
 
@@ -41,6 +41,7 @@ export function App() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [billDiscount, setBillDiscount] = useState(0);
   const [exchangeCredit, setExchangeCredit] = useState(0);
+  const [prescription, setPrescription] = useState<Prescription | undefined>();
   const [dialog, setDialog] = useState<DialogState>(null);
   const [notice, setNotice] = useState<Notice>(null);
   const [printJob, setPrintJob] = useState<{ job: PrintJob; at: number } | null>(null);
@@ -69,7 +70,7 @@ export function App() {
   useEffect(() => { if (state.deviceRevoked) lock(); }, [state.deviceRevoked, lock]);
 
   function clearBill() {
-    setItems([]); setSelectedKey(null); setCustomerId(undefined); setPaymentMethod("cash"); setBillDiscount(0); setExchangeCredit(0);
+    setItems([]); setSelectedKey(null); setCustomerId(undefined); setPaymentMethod("cash"); setBillDiscount(0); setExchangeCredit(0); setPrescription(undefined);
   }
 
   function addProduct(product: CatalogueProduct, unit: SaleUnit = "pack") {
@@ -118,12 +119,14 @@ export function App() {
     if (!items.length) return say("error", "Add an item before taking payment");
     if (quote.cart.problems.length) return say("error", quote.cart.problems[0].message);
     if (!totals) return say("error", "error" in quote.totals ? quote.totals.error : "Check the bill");
+    // A controlled drug cannot be sold until the prescription is entered for the narcotics register.
+    if (engine.needsPrescription(items) && !prescription) return setDialog({ kind: "prescription" });
     setDialog({ kind: "payment" });
   }
 
   async function completeSale(cashReceived?: number) {
     try {
-      const sale = await engine.completeSale({ user, items, billDiscount, paymentMethod, customerId, cashReceived });
+      const sale = await engine.completeSale({ user, items, billDiscount, paymentMethod, customerId, cashReceived, prescription });
       setLastSale(sale);
       clearBill();
       setDialog(null);
@@ -253,6 +256,7 @@ export function App() {
 
         <aside className="cart">
           <div className="cart-title"><h2>Current bill</h2><span>{items.length} item{items.length === 1 ? "" : "s"}</span></div>
+          {prescription && engine.needsPrescription(items) && <p className="customer-chip">Rx: {prescription.patientName} · {prescription.doctorName} <button className="link" onClick={() => setDialog({ kind: "prescription" })}>edit</button></p>}
           {customer && <p className="customer-chip">{customer.name}{customer.balance > 0 ? ` · owes ${money(customer.balance)}` : ""} <button className="link" onClick={() => setCustomerId(undefined)}>remove</button></p>}
           <div className="cart-lines">
             {items.map((item) => {
@@ -290,7 +294,14 @@ export function App() {
     {dialog?.kind === "payment" && totals && <PaymentDialog totals={totals} method={paymentMethod} onMethod={setPaymentMethod} customer={customer} exchangeCredit={exchangeCredit} onClose={closeDialog} onConfirm={completeSale} />}
     {dialog?.kind === "customer" && <CustomerDialog customers={stock.customers} selectedId={customerId} onClose={closeDialog}
       onSelect={(chosen) => { setCustomerId(chosen?.id); if (chosen) say("info", `Customer: ${chosen.name}`); closeDialog(); }}
-      onCreate={(input) => engine.createCustomer(user, input)} />}
+      onCreate={(input) => engine.createCustomer(user, input)}
+      onReceivePayment={async (chosen, amount, method) => {
+        const payment = await engine.receivePayment(user, { customerId: chosen.id, amount, method });
+        closeDialog(); print({ kind: "payment", payment });
+        say("ok", `Received ${money(amount)} from ${chosen.name}. Still owed: ${money(payment.balanceAfter)}`);
+      }} />}
+    {dialog?.kind === "prescription" && <PrescriptionDialog drugs={items.map((item) => catalogueById.get(item.productId)).filter((product) => product?.isControlled).map((product) => product!.name)} current={prescription} onClose={closeDialog}
+      onSave={(entered) => { setPrescription(entered); setDialog({ kind: "payment" }); }} />}
     {dialog?.kind === "discount" && (() => {
       const isItem = dialog.target === "item";
       const itemGross = selected ? quote.cart.lines.filter((line) => line.itemKey === selected.key).reduce((sum, line) => sum + line.gross, 0) : 0;

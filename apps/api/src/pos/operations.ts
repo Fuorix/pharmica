@@ -1,7 +1,8 @@
 import type { PosSyncResult } from "@pharmica/contracts";
 import { db, type Prisma } from "@pharmica/database/client";
-import { discountWithinLimit, ledgerBalance, packStructure, refundFor, roundMoney, sellableUnits, unitPrice, unitSize } from "@pharmica/domain";
+import { discountWithinLimit, ledgerBalance, withinCreditLimit, packStructure, refundFor, roundMoney, sellableUnits, unitPrice, unitSize } from "@pharmica/domain";
 import { z } from "zod";
+import { AccountError, recordControlledSale, recordCustomerPayment, reverseControlledSale, type AccountContext } from "../accounts/accounts";
 import { adjustStock, applyCount, receivePurchase, StockError, type StockContext } from "../inventory/stock";
 import { money } from "../lib/validation";
 
@@ -12,7 +13,7 @@ const base = { id, userId: id, occurredAt: z.iso.datetime({ offset: true }) };
 export const operationSchema = z.discriminatedUnion("type", [
   z.object({ ...base, type: z.literal("shift.open"), payload: z.object({ shiftId: id, openingCash: money }) }),
   z.object({ ...base, type: z.literal("shift.close"), payload: z.object({ shiftId: id, closingCash: money, report: z.unknown() }) }),
-  z.object({ ...base, type: z.literal("customer.create"), payload: z.object({ customerId: id, name: z.string().trim().min(1).max(120), phone: z.string().trim().max(30).optional(), creditLimit: money.optional() }) }),
+  z.object({ ...base, type: z.literal("customer.create"), payload: z.object({ customerId: id, name: z.string().trim().min(1).max(120), phone: z.string().trim().max(30).optional(), creditLimit: money.nullable().optional() }) }),
   z.object({
     ...base,
     type: z.literal("sale"),
@@ -24,9 +25,11 @@ export const operationSchema = z.discriminatedUnion("type", [
       paymentMethod,
       billDiscount: money,
       total: money,
-      lines: z.array(z.object({ lineId: id, productId: id, batchId: id, unit: z.enum(["pack", "strip", "tablet"]), quantity: z.number().int().positive().max(100_000), unitPrice: money, discount: money })).min(1).max(200)
+      lines: z.array(z.object({ lineId: id, productId: id, batchId: id, unit: z.enum(["pack", "strip", "tablet"]), quantity: z.number().int().positive().max(100_000), unitPrice: money, discount: money })).min(1).max(200),
+      prescription: z.object({ patientName: z.string().trim().min(1).max(120), patientPhone: z.string().trim().max(30).optional(), doctorName: z.string().trim().min(1).max(120), doctorRegNo: z.string().trim().max(40).optional(), prescriptionRef: z.string().trim().max(60).optional() }).optional()
     })
   }),
+  z.object({ ...base, type: z.literal("customer.payment"), payload: z.object({ paymentId: id, customerId: id, amount: money.refine((value) => value > 0, "Must be more than zero"), method: z.enum(["cash", "card"]), shiftId: id.optional(), note: z.string().trim().max(200).optional() }) }),
   z.object({ ...base, type: z.literal("sale.void"), payload: z.object({ saleId: id, reason: z.string().trim().min(1).max(300) }) }),
   z.object({ ...base, type: z.literal("sale.return"), payload: z.object({ returnId: id, saleId: id, reason: z.string().trim().min(1).max(300), refundMethod: paymentMethod, lines: z.array(z.object({ saleLineId: id, quantity: z.number().int().positive() })).min(1) }) }),
   z.object({ ...base, type: z.literal("purchase.receive"), payload: z.object({ purchaseId: id, supplier: z.object({ id: id.optional(), name: z.string().trim().min(1).max(120), phone: z.string().trim().max(30).optional() }), invoiceNumber: z.string().trim().max(60).optional(), invoiceDate: z.iso.date().optional(), invoiceDiscount: money, lines: z.array(z.object({ lineId: id.optional(), productId: id.optional(), masterProductId: id.optional(), batchId: id.optional(), batchNo: z.string().trim().min(1).max(40), expiryDate: z.iso.date(), quantity: z.number().int().nonnegative().max(1_000_000), bonusQuantity: z.number().int().nonnegative().max(1_000_000), costPrice: money, discount: money, retailPrice: money, serialNumber: z.string().trim().max(40).optional() }).refine((line) => line.productId || line.masterProductId, "Each line needs a product")).min(1).max(300) }) }),
@@ -98,8 +101,8 @@ async function applySale(context: Context, payload: Extract<Operation, { type: "
 
   const user = await tx.user.findUniqueOrThrow({ where: { id: operation.userId } });
   if (!discountWithinLimit(subtotal, discount, user.role === "OWNER" ? null : user.maxDiscountPercent)) context.flags.push("DISCOUNT_OVER_LIMIT");
-  if (customer && payload.paymentMethod === "credit" && Number(customer.creditLimit) > 0) {
-    if (ledgerBalance(customer.ledger) + total > Number(customer.creditLimit) + 0.005) context.flags.push("CREDIT_LIMIT_EXCEEDED");
+  if (customer && payload.paymentMethod === "credit" && !withinCreditLimit(ledgerBalance(customer.ledger) + total, customer.creditLimit == null ? null : Number(customer.creditLimit))) {
+    context.flags.push("CREDIT_LIMIT_EXCEEDED");
   }
 
   // The goods have already left the counter, so the sale is always recorded. If another counter sold the
@@ -139,7 +142,15 @@ async function applySale(context: Context, payload: Extract<Operation, { type: "
   if (payload.paymentMethod === "credit" && customer) {
     await tx.customerLedgerEntry.create({ data: { branchId, customerId: customer.id, userId: operation.userId, type: "CREDIT_SALE", amount: total, note: `Receipt ${payload.receiptNo}`, saleId: sale.id, createdAt: new Date(operation.occurredAt) } });
   }
+  // Scheduled drugs go into the narcotics register with the prescription the counter took down.
+  const controlledLines = lines.filter((line) => line.product.masterProduct?.isControlled);
+  if (controlledLines.length && payload.prescription) {
+    await recordControlledSale(tx, accountContext(context), { saleId: sale.id, prescription: payload.prescription, lines: controlledLines.map((line) => ({ saleLineId: line.lineId, productId: line.productId, batchId: line.batchId, unit: line.unit, quantity: line.quantity })) });
+  } else if (controlledLines.length) {
+    context.flags.push("CONTROLLED_WITHOUT_PRESCRIPTION");
+  }
   await audit(context, "sale.created", "sale", sale.id, { total, discount, paymentMethod: payload.paymentMethod, receiptNo: payload.receiptNo, flags: context.flags });
+  if (context.flags.includes("CONTROLLED_WITHOUT_PRESCRIPTION")) await audit(context, "controlled_drug.missing_prescription", "sale", sale.id, { products: controlledLines.map((line) => line.product.name) });
   if (shortfalls.length) await audit(context, "stock.oversold", "sale", sale.id, { shortfalls });
   if (context.flags.includes("DISCOUNT_OVER_LIMIT")) await audit(context, "sale.discount_over_limit", "sale", sale.id, { discount, subtotal, limit: user.maxDiscountPercent });
 }
@@ -159,6 +170,7 @@ async function applyVoid(context: Context, payload: Extract<Operation, { type: "
   if (sale.paymentMethod === "CREDIT" && sale.customerId) {
     await context.tx.customerLedgerEntry.create({ data: { branchId: sale.branchId, customerId: sale.customerId, userId: context.operation.userId, type: "CREDIT_RETURN", amount: sale.total, note: `Void of receipt ${sale.receiptNo ?? sale.id}`, saleId: sale.id } });
   }
+  await reverseControlledSale(context.tx, accountContext(context), { saleId: sale.id, reason: `Void: ${payload.reason}` });
   await audit(context, "sale.voided", "sale", sale.id, { reason: payload.reason, total: Number(sale.total) });
 }
 
@@ -182,7 +194,12 @@ async function applyReturn(context: Context, payload: Extract<Operation, { type:
   }
   const fullyReturned = sale.lines.every((line) => line.returnLines.reduce((sum, item) => sum + item.quantity, 0) + (refund.lines.find((item) => item.saleLineId === line.id)?.quantity ?? 0) >= line.quantity);
   if (fullyReturned) await context.tx.sale.update({ where: { id: sale.id }, data: { status: "RETURNED" } });
+  await reverseControlledSale(context.tx, accountContext(context), { saleId: sale.id, reason: `Return: ${payload.reason}`, returned: new Map(refund.lines.map((item) => [item.saleLineId, item.quantity])) });
   await audit(context, "sale.returned", "sale", sale.id, { returnId: payload.returnId, reason: payload.reason, refund: refund.amount, refundMethod });
+}
+
+function accountContext(context: Context): AccountContext {
+  return { branchId: context.device.branchId, organisationId: context.device.branch.organisationId, userId: context.operation.userId, deviceId: context.device.id, at: new Date(context.operation.occurredAt) };
 }
 
 function stockContext(context: Context): StockContext {
@@ -203,12 +220,17 @@ async function applyOperation(context: Context): Promise<void> {
       await audit(context, "shift.closed", "shift", shift.id, { closingCash: operation.payload.closingCash });
       return;
     }
+    case "customer.payment": {
+      const { paymentId: _paymentId, ...payment } = operation.payload;
+      await recordCustomerPayment(tx, accountContext(context), payment);
+      return;
+    }
     case "customer.create": {
       const { customerId, name, phone, creditLimit } = operation.payload;
       // Two counters may add the same phone number while offline; keep the customer and drop the clash.
       const phoneTaken = phone ? await tx.customer.findUnique({ where: { branchId_phone: { branchId: device.branchId, phone } } }) : null;
       if (phoneTaken) context.flags.push("DUPLICATE_PHONE");
-      await tx.customer.create({ data: { id: customerId, branchId: device.branchId, name, phone: phoneTaken ? null : phone, creditLimit: creditLimit ?? 0, createdAt: new Date(operation.occurredAt) } });
+      await tx.customer.create({ data: { id: customerId, branchId: device.branchId, name, phone: phoneTaken ? null : phone, creditLimit: creditLimit === undefined ? 0 : creditLimit, createdAt: new Date(operation.occurredAt) } });
       await audit(context, "customer.created", "customer", customerId);
       return;
     }
@@ -274,7 +296,7 @@ export async function processOperation(device: Device, raw: unknown): Promise<Po
     });
     return { id: operation.id, status: "applied", ...(flags.length ? { flags } : {}) };
   } catch (error) {
-    const failure = error instanceof OperationError || error instanceof StockError ? { code: error.code, message: error.message } : { code: "OPERATION_FAILED", message: "The server could not apply this operation" };
+    const failure = error instanceof OperationError || error instanceof StockError || error instanceof AccountError ? { code: error.code, message: error.message } : { code: "OPERATION_FAILED", message: "The server could not apply this operation" };
     return record(device, operation, { id: operation.id, status: "failed", error: failure });
   }
 }

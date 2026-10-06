@@ -1,4 +1,4 @@
-import type { CatalogueProduct, PaymentMethod, PosBatch, PosCustomer, PosOperation, PosSnapshot, PosSyncResult, SaleUnit } from "@pharmica/contracts";
+import type { CatalogueProduct, PaymentMethod, PosBatch, PosCustomer, PosOperation, PosSnapshot, PosSyncResult, Prescription, SaleUnit } from "@pharmica/contracts";
 import type { CartItem, PurchaseTotals, ShiftReport } from "@pharmica/domain";
 
 /** A change this counter made that the server has not confirmed yet. */
@@ -81,9 +81,25 @@ export interface LocalSale {
   cashReceived?: number;
   change?: number;
   status: "completed" | "voided" | "returned";
+  /** Recorded for bills with a controlled (scheduled) drug. */
+  prescription?: Prescription;
   voidReason?: string;
   voidedAt?: string;
   returns: LocalReturn[];
+}
+
+/** A credit (udhaar) repayment taken at this counter. */
+export interface LocalPayment {
+  id: string;
+  at: string;
+  shiftId?: string;
+  customerId: string;
+  customerName: string;
+  amount: number;
+  method: "cash" | "card";
+  userName: string;
+  /** What the customer still owes after this payment (as this counter sees it). */
+  balanceAfter: number;
 }
 
 export interface LocalShift {

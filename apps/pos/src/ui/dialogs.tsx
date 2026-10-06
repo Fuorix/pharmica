@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import type { CatalogueProduct, PaymentMethod, PosCustomer } from "@pharmica/contracts";
+import type { CatalogueProduct, PaymentMethod, PosCustomer, Prescription } from "@pharmica/contracts";
 import type { BillTotals } from "@pharmica/domain";
 import type { HeldBill, QueuedOperation, SyncStatus } from "../local/types";
 import { Dialog } from "./Dialog";
@@ -56,7 +56,7 @@ export function PaymentDialog({ totals, method, onMethod, customer, exchangeCred
       <div className="segmented">{methods.map((item) => <button type="button" key={item.value} className={method === item.value ? "active" : ""} onClick={() => onMethod(item.value)}><b>{item.key}</b> {item.label}</button>)}</div>
       {method === "cash" && due > 0 && <label>Cash received<input ref={cashRef} autoFocus inputMode="decimal" value={cash} onChange={(event) => setCash(event.target.value.replace(/[^\d.]/g, ""))} /></label>}
       {method === "cash" && due > 0 && <div className="payment-change"><span>Change</span><strong>{Number.isFinite(received) && received >= due ? money(received - due) : "—"}</strong></div>}
-      {method === "credit" && <p className={customer ? "muted" : "warning-text"}>{customer ? `${customer.name} owes ${money(customer.balance)} now${customer.creditLimit > 0 ? `, limit ${money(customer.creditLimit)}` : ""}` : "Choose a customer first (F3)"}</p>}
+      {method === "credit" && <p className={customer ? "muted" : "warning-text"}>{customer ? `${customer.name} owes ${money(customer.balance)} now · ${customer.creditLimit === null ? "no credit limit" : customer.creditLimit === 0 ? "no credit allowed" : `limit ${money(customer.creditLimit)}`}` : "Choose a customer first (F3)"}</p>}
       <button className="primary" autoFocus={method !== "cash"} disabled={busy || (method === "cash" && due > 0 && !(received >= due)) || (method === "credit" && !customer)}>{busy ? "Saving..." : "Complete sale"} <b>Enter</b></button>
     </form>
   </Dialog>;
@@ -83,13 +83,16 @@ export function DiscountDialog({ title, base, current, limitNote, onClose, onApp
   </Dialog>;
 }
 
-export function CustomerDialog({ customers, selectedId, onClose, onSelect, onCreate }: {
+export function CustomerDialog({ customers, selectedId, onClose, onSelect, onCreate, onReceivePayment }: {
   customers: PosCustomer[]; selectedId?: string; onClose: () => void; onSelect: (customer: PosCustomer | undefined) => void;
-  onCreate: (input: { name: string; phone?: string; creditLimit?: number }) => Promise<PosCustomer>;
+  onCreate: (input: { name: string; phone?: string; creditLimit?: number | null }) => Promise<PosCustomer>;
+  onReceivePayment: (customer: PosCustomer, amount: number, method: "cash" | "card") => Promise<void>;
 }) {
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ name: "", phone: "", creditLimit: "" });
+  const [paying, setPaying] = useState<PosCustomer | null>(null);
+  const [payment, setPayment] = useState({ amount: "", method: "cash" as "cash" | "card" });
+  const [form, setForm] = useState({ name: "", phone: "", creditLimit: "", noLimit: false });
   const [error, setError] = useState("");
   const matches = useMemo(() => {
     const text = query.trim().toLowerCase();
@@ -100,17 +103,41 @@ export function CustomerDialog({ customers, selectedId, onClose, onSelect, onCre
   async function create(event: FormEvent) {
     event.preventDefault();
     try {
-      onSelect(await onCreate({ name: form.name, phone: form.phone || undefined, creditLimit: form.creditLimit ? Number(form.creditLimit) : undefined }));
+      onSelect(await onCreate({ name: form.name, phone: form.phone || undefined, creditLimit: form.noLimit ? null : Number(form.creditLimit || 0) }));
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : "Could not add customer");
     }
+  }
+
+  async function pay(event: FormEvent) {
+    event.preventDefault();
+    if (!paying) return;
+    try {
+      await onReceivePayment(paying, Number(payment.amount), payment.method);
+    } catch (problem) {
+      setError(problem instanceof Error ? problem.message : "Could not record the payment");
+    }
+  }
+
+  if (paying) {
+    return <Dialog title={`Payment from ${paying.name}`} onClose={() => { setPaying(null); setError(""); }}>
+      <form className="stack" onSubmit={pay}>
+        <p className="muted">Owes {money(paying.balance)}{paying.daysOutstanding ? `, oldest unpaid ${paying.daysOutstanding} days ago` : ""}.</p>
+        <label>Amount received<input autoFocus inputMode="decimal" value={payment.amount} onChange={(event) => setPayment({ ...payment, amount: event.target.value.replace(/[^\d.]/g, "") })} /></label>
+        <div className="segmented">{(["cash", "card"] as const).map((method) => <button type="button" key={method} className={payment.method === method ? "active" : ""} onClick={() => setPayment({ ...payment, method })}>{method === "cash" ? "Cash" : "Card"}</button>)}</div>
+        {Number(payment.amount) > 0 && <p className="muted">Still owed after this: {money(paying.balance - Number(payment.amount))}</p>}
+        {error && <p className="warning-text">{error}</p>}
+        <button className="primary" disabled={!(Number(payment.amount) > 0)}>Record payment <b>Enter</b></button>
+      </form>
+    </Dialog>;
   }
 
   return <Dialog title="Customer" onClose={onClose} wide>
     {creating ? <form className="stack" onSubmit={create}>
       <input autoFocus required placeholder="Name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
       <input placeholder="Mobile number" inputMode="tel" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
-      <input placeholder="Credit limit in PKR (0 = no limit)" inputMode="decimal" value={form.creditLimit} onChange={(event) => setForm({ ...form, creditLimit: event.target.value.replace(/[^\d.]/g, "") })} />
+      <input placeholder="Credit limit in PKR (empty = no credit)" disabled={form.noLimit} inputMode="decimal" value={form.creditLimit} onChange={(event) => setForm({ ...form, creditLimit: event.target.value.replace(/[^\d.]/g, "") })} />
+      <label className="check"><input type="checkbox" checked={form.noLimit} onChange={(event) => setForm({ ...form, noLimit: event.target.checked })} /> No credit limit (trusted customer)</label>
       {error && <p className="warning-text">{error}</p>}
       <div className="row"><button type="button" onClick={() => setCreating(false)}>Back</button><button className="primary">Add customer</button></div>
     </form> : <div className="stack">
@@ -119,11 +146,12 @@ export function CustomerDialog({ customers, selectedId, onClose, onSelect, onCre
         else list.onKeyDown(event);
       }} />
       <div className="pick-list">{matches.map((customer, index) => <button key={customer.id} className={index === list.index ? "highlight" : customer.id === selectedId ? "chosen" : ""} onMouseEnter={() => list.setIndex(index)} onClick={() => onSelect(customer)}>
-        <strong>{customer.name}</strong><span>{customer.phone ?? "No mobile"}</span><span className={customer.balance > 0 ? "owes" : ""}>{customer.balance > 0 ? `owes ${money(customer.balance)}` : "nothing owed"}</span>
+        <strong>{customer.name}</strong><span>{customer.phone ?? "No mobile"}</span><span className={customer.balance > 0 ? "owes" : ""}>{customer.balance > 0 ? `owes ${money(customer.balance)}${customer.daysOutstanding > 30 ? ` · ${customer.daysOutstanding} days` : ""}` : "nothing owed"}</span>
       </button>)}</div>
       {!matches.length && <p className="muted">No customers found.</p>}
       <div className="row">
         <button onClick={() => { setCreating(true); setForm({ ...form, name: query }); }}>New customer <b>Ctrl+N</b></button>
+        {matches[list.index] && matches[list.index].balance > 0 && <button onClick={() => { setPaying(matches[list.index]); setPayment({ amount: String(matches[list.index].balance), method: "cash" }); }}>Receive payment from {matches[list.index].name}</button>}
         {selectedId && <button onClick={() => onSelect(undefined)}>Remove customer from bill</button>}
       </div>
     </div>}
@@ -187,5 +215,26 @@ export const SHORTCUTS: Array<[string, string]> = [
 export function HelpDialog({ onClose }: { onClose: () => void }) {
   return <Dialog title="Keyboard shortcuts" onClose={onClose} wide>
     <table className="shortcuts"><tbody>{SHORTCUTS.map(([keys, action]) => <tr key={keys}><td><kbd>{keys}</kbd></td><td>{action}</td></tr>)}</tbody></table>
+  </Dialog>;
+}
+
+/** Patient and doctor details for the narcotics register; required before selling a controlled drug. */
+export function PrescriptionDialog({ drugs, current, onClose, onSave }: { drugs: string[]; current?: Prescription; onClose: () => void; onSave: (prescription: Prescription) => void }) {
+  const [form, setForm] = useState({ patientName: current?.patientName ?? "", patientPhone: current?.patientPhone ?? "", doctorName: current?.doctorName ?? "", doctorRegNo: current?.doctorRegNo ?? "", prescriptionRef: current?.prescriptionRef ?? "" });
+  const set = (field: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [field]: event.target.value });
+  function save(event: FormEvent) {
+    event.preventDefault();
+    onSave({ patientName: form.patientName.trim(), doctorName: form.doctorName.trim(), ...(form.patientPhone.trim() ? { patientPhone: form.patientPhone.trim() } : {}), ...(form.doctorRegNo.trim() ? { doctorRegNo: form.doctorRegNo.trim() } : {}), ...(form.prescriptionRef.trim() ? { prescriptionRef: form.prescriptionRef.trim() } : {}) });
+  }
+  return <Dialog title="Narcotics register" onClose={onClose}>
+    <form className="stack" onSubmit={save}>
+      <p className="notice">Controlled drug{drugs.length > 1 ? "s" : ""}: {drugs.join(", ")}. Check the prescription and enter it for the register.</p>
+      <label>Patient name<input autoFocus required value={form.patientName} onChange={set("patientName")} /></label>
+      <label>Patient mobile<input inputMode="tel" value={form.patientPhone} onChange={set("patientPhone")} /></label>
+      <label>Doctor name<input required value={form.doctorName} onChange={set("doctorName")} /></label>
+      <label>Doctor PMDC / registration no.<input value={form.doctorRegNo} onChange={set("doctorRegNo")} /></label>
+      <label>Prescription no. / reference<input value={form.prescriptionRef} onChange={set("prescriptionRef")} /></label>
+      <button className="primary" disabled={!form.patientName.trim() || !form.doctorName.trim()}>Save and continue <b>Enter</b></button>
+    </form>
   </Dialog>;
 }

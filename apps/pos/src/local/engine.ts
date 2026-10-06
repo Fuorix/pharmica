@@ -1,8 +1,8 @@
-import type { CatalogueProduct, MasterProductSummary, PaymentMethod, PosBatch, PosCustomer, PosOperation, PosSnapshot, PosStaffMember, PosSyncResult, ReceivePurchaseLine, StockAdjustmentType } from "@pharmica/contracts";
-import { billTotals, computeShiftReport, discountWithinLimit, formatReceiptNo, NEAR_EXPIRY_DAYS, priceCart, purchaseTotals, refundFor, roundMoney, sellableUnits, type CartItem, type CartProblem } from "@pharmica/domain";
+import type { CatalogueProduct, MasterProductSummary, PaymentMethod, PosBatch, PosCustomer, PosOperation, PosSnapshot, PosStaffMember, PosSyncResult, Prescription, ReceivePurchaseLine, StockAdjustmentType } from "@pharmica/contracts";
+import { billTotals, computeShiftReport, discountWithinLimit, withinCreditLimit, formatReceiptNo, NEAR_EXPIRY_DAYS, priceCart, purchaseTotals, refundFor, roundMoney, sellableUnits, type CartItem, type CartProblem } from "@pharmica/domain";
 import type { Entry, LocalDb } from "./db";
 import { workingStock, type WorkingStock } from "./state";
-import type { HeldBill, LocalPurchase, LocalReturn, LocalSale, LocalShift, PosSettings, QueuedOperation, SyncStatus } from "./types";
+import type { HeldBill, LocalPayment, LocalPurchase, LocalReturn, LocalSale, LocalShift, PosSettings, QueuedOperation, SyncStatus } from "./types";
 
 export interface ReceiveInput {
   supplierId?: string;
@@ -48,6 +48,7 @@ export interface EngineState {
   sales: LocalSale[];
   held: HeldBill[];
   purchases: LocalPurchase[];
+  payments: LocalPayment[];
   shift: LocalShift | null;
   settings: PosSettings;
   sync: SyncStatus;
@@ -76,7 +77,7 @@ export class PosEngine {
 
   static async open(db: LocalDb, transport: Transport, deviceId: string): Promise<PosEngine> {
     const engine = new PosEngine(db, transport, deviceId, {
-      snapshot: null, stock: null, outbox: [], sales: [], held: [], purchases: [], shift: null, settings: { paperWidth: 80 }, deviceRevoked: false,
+      snapshot: null, stock: null, outbox: [], sales: [], held: [], purchases: [], payments: [], shift: null, settings: { paperWidth: 80 }, deviceRevoked: false,
       sync: { online: typeof navigator === "undefined" ? true : navigator.onLine, syncing: false, pending: 0, failed: 0, lastSyncAt: null, lastSnapshotAt: null, error: null }
     });
     await engine.reload();
@@ -98,7 +99,7 @@ export class PosEngine {
   }
 
   private async reload() {
-    const [snapshot, outbox, sales, held, shift, settings, localCustomers, lastSyncAt, purchases] = await Promise.all([
+    const [snapshot, outbox, sales, held, shift, settings, localCustomers, lastSyncAt, purchases, payments] = await Promise.all([
       this.db.get<PosSnapshot>("meta", "snapshot"),
       this.db.all<QueuedOperation>("outbox"),
       this.db.all<LocalSale>("sales"),
@@ -107,7 +108,8 @@ export class PosEngine {
       this.db.get<PosSettings>("meta", "settings"),
       this.db.all<PosCustomer>("customers"),
       this.db.get<string>("meta", "lastSyncAt"),
-      this.db.all<LocalPurchase>("purchases")
+      this.db.all<LocalPurchase>("purchases"),
+      this.db.all<LocalPayment>("payments")
     ]);
     sales.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     this.set({
@@ -117,6 +119,7 @@ export class PosEngine {
       sales: sales.slice(0, RECENT_SALES),
       held: held.sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
       purchases: purchases.reverse().slice(0, 100),
+      payments: payments.reverse().slice(0, 500),
       shift,
       settings: settings ?? { paperWidth: 80 },
       sync: { ...this.state.sync, pending: outbox.filter((op) => op.status === "pending").length, failed: outbox.filter((op) => op.status === "failed").length, lastSyncAt, lastSnapshotAt: snapshot?.generatedAt ?? null }
@@ -158,7 +161,7 @@ export class PosEngine {
     return { cart, totals };
   }
 
-  async completeSale(input: { user: PosStaffMember; items: CartItem[]; billDiscount: number; paymentMethod: PaymentMethod; customerId?: string; cashReceived?: number }): Promise<LocalSale> {
+  async completeSale(input: { user: PosStaffMember; items: CartItem[]; billDiscount: number; paymentMethod: PaymentMethod; customerId?: string; cashReceived?: number; prescription?: Prescription }): Promise<LocalSale> {
     const shift = this.state.shift;
     if (!shift) throw new PosError("Open a shift before taking payment");
     if (!input.items.length) throw new PosError("The bill is empty");
@@ -173,11 +176,16 @@ export class PosEngine {
     if (input.customerId && !customer) throw new PosError("Customer not found");
     if (input.paymentMethod === "credit") {
       if (!customer) throw new PosError("Choose a customer (F3) for a credit (udhaar) sale");
-      if (customer.creditLimit > 0 && customer.balance + totals.total > customer.creditLimit + 0.005) {
-        throw new PosError(`${customer.name} would owe PKR ${(customer.balance + totals.total).toFixed(2)}, over their limit of PKR ${customer.creditLimit.toFixed(2)}`);
+      if (customer.creditLimit === 0) throw new PosError(`${customer.name} is not allowed credit. The owner can set a credit limit`);
+      if (!withinCreditLimit(customer.balance + totals.total, customer.creditLimit)) {
+        throw new PosError(`${customer.name} would owe PKR ${(customer.balance + totals.total).toFixed(2)}, over their limit of PKR ${customer.creditLimit!.toFixed(2)}`);
       }
     }
     if (input.paymentMethod === "cash" && input.cashReceived !== undefined && input.cashReceived + 0.005 < totals.total) throw new PosError("Cash received is less than the total");
+    const prescription = this.needsPrescription(input.items) ? input.prescription : undefined;
+    if (this.needsPrescription(input.items) && (!prescription?.patientName.trim() || !prescription.doctorName.trim())) {
+      throw new PosError("This bill has a controlled drug: enter the patient and doctor for the narcotics register");
+    }
 
     const receiptSeq = await this.nextSequence("receiptSeq");
     const names = new Map(this.requireStock().catalogue.map((product) => [product.id, product.name]));
@@ -200,11 +208,13 @@ export class PosEngine {
       cashReceived: input.paymentMethod === "cash" ? input.cashReceived ?? totals.total : undefined,
       change: input.paymentMethod === "cash" ? roundMoney((input.cashReceived ?? totals.total) - totals.total) : undefined,
       status: "completed",
+      ...(prescription ? { prescription } : {}),
       returns: []
     };
     const operation = { ...this.operation("sale", input.user, {
       saleId: sale.id, receiptNo: sale.receiptNo, shiftId: shift.id, customerId: sale.customerId, paymentMethod: sale.paymentMethod, billDiscount: sale.billDiscount, total: sale.total,
-      lines: sale.lines.map((line) => ({ lineId: line.lineId, productId: line.productId, batchId: line.batchId, unit: line.unit, quantity: line.quantity, unitPrice: line.unitPrice, discount: line.discount }))
+      lines: sale.lines.map((line) => ({ lineId: line.lineId, productId: line.productId, batchId: line.batchId, unit: line.unit, quantity: line.quantity, unitPrice: line.unitPrice, discount: line.discount })),
+      ...(prescription ? { prescription } : {})
     }), occurredAt: sale.createdAt };
 
     const ops: Array<Omit<QueuedOperation, "key" | "status" | "attempts">> = [{
@@ -384,6 +394,30 @@ export class PosEngine {
     await this.commit([], [{ operation: this.operation("product.update", user, { productId, ...change }), stockEffects: [], balanceEffects: [], productChanges: [{ productId, ...change }] }]);
   }
 
+  // ----- credit (udhaar) -----
+
+  /** True when any item on the bill is a controlled (scheduled) drug, which needs a register entry. */
+  needsPrescription(items: CartItem[]): boolean {
+    const catalogue = this.state.stock?.catalogue ?? [];
+    return items.some((item) => catalogue.find((product) => product.id === item.productId)?.isControlled);
+  }
+
+  /** A customer pays back credit. Works offline; cash goes into this shift's drawer total. */
+  async receivePayment(user: PosStaffMember, input: { customerId: string; amount: number; method: "cash" | "card"; note?: string }): Promise<LocalPayment> {
+    const customer = this.requireStock().customers.find((candidate) => candidate.id === input.customerId);
+    if (!customer) throw new PosError("Customer not found");
+    const amount = roundMoney(input.amount);
+    if (!Number.isFinite(amount) || amount <= 0) throw new PosError("Enter the amount received");
+    const shift = this.state.shift;
+    if (input.method === "cash" && !shift) throw new PosError("Open a shift before taking cash");
+    const payment: LocalPayment = { id: newId(), at: nowIso(), shiftId: shift?.id, customerId: customer.id, customerName: customer.name, amount, method: input.method, userName: user.name, balanceAfter: roundMoney(customer.balance - amount) };
+    await this.commit([{ collection: "payments", id: `${payment.at}-${payment.id}`, value: payment }], [{
+      operation: { ...this.operation("customer.payment", user, { paymentId: payment.id, customerId: customer.id, amount, method: input.method, shiftId: shift?.id, note: input.note?.trim() || undefined }), occurredAt: payment.at },
+      stockEffects: [], balanceEffects: [{ customerId: customer.id, delta: -amount }]
+    }]);
+    return payment;
+  }
+
   // ----- shifts -----
 
   async openShift(user: PosStaffMember, openingCash: number): Promise<LocalShift> {
@@ -400,7 +434,8 @@ export class PosEngine {
     if (!shift) return null;
     const sales = this.state.sales.filter((sale) => sale.shiftId === shift.id);
     const refunds = this.state.sales.flatMap((sale) => sale.returns.filter((item) => item.at >= shift.openedAt).map((item) => ({ amount: item.amount, method: item.method })));
-    return computeShiftReport({ openingCash: shift.openingCash, sales: sales.map((sale) => ({ total: sale.total, discount: sale.discount, paymentMethod: sale.paymentMethod, voided: sale.status === "voided" })), refunds, countedCash });
+    const collections = this.state.payments.filter((payment) => payment.shiftId === shift.id).map((payment) => ({ amount: payment.amount, method: payment.method }));
+    return computeShiftReport({ openingCash: shift.openingCash, sales: sales.map((sale) => ({ total: sale.total, discount: sale.discount, paymentMethod: sale.paymentMethod, voided: sale.status === "voided" })), refunds, collections, countedCash });
   }
 
   async closeShift(user: PosStaffMember, countedCash: number): Promise<LocalShift> {
@@ -418,11 +453,12 @@ export class PosEngine {
 
   // ----- customers, held bills, audit -----
 
-  async createCustomer(user: PosStaffMember, input: { name: string; phone?: string; creditLimit?: number }): Promise<PosCustomer> {
+  /** `creditLimit`: 0 or missing allows no credit; null means no limit. */
+  async createCustomer(user: PosStaffMember, input: { name: string; phone?: string; creditLimit?: number | null }): Promise<PosCustomer> {
     if (!input.name.trim()) throw new PosError("Customer name is required");
     const phone = input.phone?.trim() || undefined;
     if (phone && this.requireStock().customers.some((customer) => customer.phone === phone)) throw new PosError("A customer with that phone number already exists");
-    const customer: PosCustomer = { id: newId(), name: input.name.trim(), phone: phone ?? null, creditLimit: roundMoney(input.creditLimit ?? 0), balance: 0 };
+    const customer: PosCustomer = { id: newId(), name: input.name.trim(), phone: phone ?? null, creditLimit: input.creditLimit === null ? null : roundMoney(input.creditLimit ?? 0), balance: 0, daysOutstanding: 0 };
     await this.commit([{ collection: "customers", id: customer.id, value: customer }], [{ operation: this.operation("customer.create", user, { customerId: customer.id, name: customer.name, phone, creditLimit: customer.creditLimit }), stockEffects: [], balanceEffects: [] }]);
     return customer;
   }

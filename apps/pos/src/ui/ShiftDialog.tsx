@@ -32,6 +32,7 @@ export function ShiftDialog({ shift, report, onReport, onPrintInterim, onClose, 
         <div><span>Credit (udhaar)</span><strong>{money(live.byMethod.credit)}</strong></div>
         <div><span>Discounts</span><strong>{money(live.discounts)}</strong></div>
         <div><span>Voids / returns</span><strong>{live.voidCount} / {live.returnCount}</strong></div>
+        <div><span>Credit repaid (cash / card)</span><strong>{money(live.collections.cash)} / {money(live.collections.card)}</strong></div>
         <div><span>Cash refunds</span><strong>{money(live.refunds.cash)}</strong></div>
         <div className="emphasis"><span>Expected in drawer</span><strong>{money(live.expectedCash)}</strong></div>
       </div>

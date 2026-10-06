@@ -1,11 +1,12 @@
 import type { ShiftReport } from "@pharmica/domain";
-import type { LocalReturn, LocalSale, LocalShift } from "../local/types";
+import type { LocalPayment, LocalReturn, LocalSale, LocalShift } from "../local/types";
 import { dateTime, plainMoney, unitLabel } from "./format";
 
 export type PrintJob =
   | { kind: "receipt"; sale: LocalSale }
   | { kind: "return"; sale: LocalSale; saleReturn: LocalReturn }
-  | { kind: "shift"; shift: LocalShift; report: ShiftReport };
+  | { kind: "shift"; shift: LocalShift; report: ShiftReport }
+  | { kind: "payment"; payment: LocalPayment };
 
 type Header = { organisationName: string; branchName: string; deviceName: string };
 
@@ -47,12 +48,27 @@ export function Printable({ job, header }: { job: PrintJob | null; header: Heade
         <tr className="rule"><td>Cash sales</td><td>{plainMoney(report.byMethod.cash)}</td></tr>
         <tr><td>Card sales</td><td>{plainMoney(report.byMethod.card)}</td></tr>
         <tr><td>Credit sales</td><td>{plainMoney(report.byMethod.credit)}</td></tr>
+        <tr><td>Credit repaid (cash)</td><td>{plainMoney(report.collections.cash)}</td></tr>
+        <tr><td>Credit repaid (card)</td><td>{plainMoney(report.collections.card)}</td></tr>
         <tr><td>Cash refunds</td><td>{plainMoney(report.refunds.cash)}</td></tr>
         <tr className="rule"><td>Opening cash</td><td>{plainMoney(report.openingCash)}</td></tr>
         <tr><td><b>Expected cash</b></td><td><b>{plainMoney(report.expectedCash)}</b></td></tr>
         {report.countedCash != null && <tr><td>Counted cash</td><td>{plainMoney(report.countedCash)}</td></tr>}
         {report.variance != null && <tr><td><b>{report.variance < 0 ? "Short" : report.variance > 0 ? "Over" : "Balanced"}</b></td><td><b>{plainMoney(Math.abs(report.variance))}</b></td></tr>}
       </tbody></table>
+    </div>;
+  }
+
+  if (job.kind === "payment") {
+    const { payment } = job;
+    return <div className="print-root">
+      <Top header={header} title="PAYMENT RECEIVED" />
+      <p>{dateTime(payment.at)}<br />Customer: {payment.customerName}<br />Received by: {payment.userName}</p>
+      <table><tbody>
+        <tr className="rule"><td><b>Paid ({payment.method === "cash" ? "cash" : "card"})</b></td><td><b>{plainMoney(payment.amount)}</b></td></tr>
+        <tr><td>Still owed</td><td>{plainMoney(payment.balanceAfter)}</td></tr>
+      </tbody></table>
+      <p className="print-foot">Thank you · {header.deviceName}</p>
     </div>;
   }
 
@@ -63,7 +79,7 @@ export function Printable({ job, header }: { job: PrintJob | null; header: Heade
     : sale.lines;
   return <div className="print-root">
     <Top header={header} title={isReturn ? "RETURN RECEIPT" : sale.status === "voided" ? "VOIDED SALE" : "SALE RECEIPT"} />
-    <p>Receipt {sale.receiptNo}<br />{dateTime(isReturn ? job.saleReturn.at : sale.createdAt)}<br />Cashier: {isReturn ? job.saleReturn.userName : sale.userName}{sale.customerName ? <><br />Customer: {sale.customerName}</> : null}</p>
+    <p>Receipt {sale.receiptNo}<br />{dateTime(isReturn ? job.saleReturn.at : sale.createdAt)}<br />Cashier: {isReturn ? job.saleReturn.userName : sale.userName}{sale.customerName ? <><br />Customer: {sale.customerName}</> : null}{sale.prescription ? <><br />Rx: {sale.prescription.patientName} · {sale.prescription.doctorName}{sale.prescription.prescriptionRef ? ` · ${sale.prescription.prescriptionRef}` : ""}</> : null}</p>
     <table className="items"><tbody>
       {lines.map((line) => <tr key={line.lineId}>
         <td>{line.name}<small>{unitLabel(line.unit, line.quantity)} × {plainMoney(line.unitPrice)}{line.discount ? ` − ${plainMoney(line.discount)}` : ""} · B:{line.batchNo}</small></td>

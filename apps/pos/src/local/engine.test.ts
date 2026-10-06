@@ -15,13 +15,14 @@ function snapshot(quantities: { old: number; new: number } = { old: 40, new: 200
     device: { id: "device-7k2q", name: "Counter 1", branchId: "b1", branchName: "Main" },
     organisationName: "Demo Pharmacy",
     staff: [cashier, owner],
-    products: [product, { ...product, id: "p-arinac", name: "Arinac", barcode: "2000000000020" }],
+    products: [product, { ...product, id: "p-arinac", name: "Arinac", barcode: "2000000000020" }, { ...product, id: "p-xanax", name: "Xanax 0.5mg", generic: "Alprazolam", barcode: "2000000000431", isControlled: true, isPrescriptionOnly: true }],
     batches: [
       { id: "old", productId: "p-brufen", batchNo: "OLD", expiryDate: future(60), quantity: quantities.old, retailPrice: 300 },
       { id: "new", productId: "p-brufen", batchNo: "NEW", expiryDate: future(500), quantity: quantities.new, retailPrice: 330 },
-      { id: "arinac", productId: "p-arinac", batchNo: "A", expiryDate: future(300), quantity: 100, retailPrice: 310 }
+      { id: "arinac", productId: "p-arinac", batchNo: "A", expiryDate: future(300), quantity: 100, retailPrice: 310 },
+      { id: "xanax", productId: "p-xanax", batchNo: "X", expiryDate: future(300), quantity: 60, retailPrice: 330 }
     ],
-    customers: [{ id: "c-ali", name: "Ali", phone: "0300", creditLimit: 1000, balance: 400 }],
+    customers: [{ id: "c-ali", name: "Ali", phone: "0300", creditLimit: 1000, balance: 400, daysOutstanding: 12 }],
     suppliers: [{ id: "s-mp", name: "Muller & Phipps" }]
   };
 }
@@ -256,6 +257,42 @@ describe("receiving and stock control offline", () => {
 
   it("needs the internet to search the master list", async () => {
     await expect(engine.searchMaster("risek")).rejects.toThrow(OfflineError);
+  });
+});
+
+describe("credit repayments and controlled drugs", () => {
+  it("takes a repayment offline, lowers what the customer owes, and counts the cash in the shift", async () => {
+    const payment = await engine.receivePayment(cashier, { customerId: "c-ali", amount: 150, method: "cash" });
+    expect(payment).toMatchObject({ amount: 150, balanceAfter: 250 });
+    expect(engine.getState().stock!.customers[0].balance).toBe(250);
+    expect(engine.getState().outbox.at(-1)!.operation).toMatchObject({ type: "customer.payment", payload: { customerId: "c-ali", amount: 150, method: "cash" } });
+    expect(engine.shiftReport(5150)).toMatchObject({ expectedCash: 5150, variance: 0, collections: { cash: 150, card: 0, credit: 0 } });
+    await expect(engine.receivePayment(cashier, { customerId: "c-ali", amount: 0, method: "cash" })).rejects.toThrow("amount");
+  });
+
+  it("refuses to sell a controlled drug without the patient and doctor, and records them when given", async () => {
+    const items = [{ key: "x", productId: "p-xanax", unit: "pack" as const, quantity: 1, discount: 0 }];
+    expect(engine.needsPrescription(items)).toBe(true);
+    await expect(engine.completeSale({ user: cashier, items, billDiscount: 0, paymentMethod: "cash" })).rejects.toThrow("narcotics register");
+    const prescription = { patientName: "Ahmed Raza", doctorName: "Dr. Saima Khan", doctorRegNo: "PMDC-12345" };
+    const sale = await engine.completeSale({ user: cashier, items, billDiscount: 0, paymentMethod: "cash", prescription });
+    expect(sale.prescription).toEqual(prescription);
+    expect(engine.getState().outbox.at(-1)!.operation).toMatchObject({ type: "sale", payload: { prescription } });
+  });
+
+  it("does not attach a prescription to bills without controlled drugs", async () => {
+    const sale = await sell([{ quantity: 1 }], { prescription: { patientName: "X", doctorName: "Y" } });
+    expect(sale.prescription).toBeUndefined();
+  });
+});
+
+describe("credit limits", () => {
+  it("gives a new customer no credit unless the owner sets a limit or chooses no limit", async () => {
+    const plain = await engine.createCustomer(cashier, { name: "Walk-in" });
+    expect(plain.creditLimit).toBe(0);
+    await expect(sell([{ quantity: 1 }], { paymentMethod: "credit", customerId: plain.id })).rejects.toThrow("not allowed credit");
+    const trusted = await engine.createCustomer(cashier, { name: "Regular", creditLimit: null });
+    await expect(sell([{ quantity: 1 }], { paymentMethod: "credit", customerId: trusted.id })).resolves.toMatchObject({ paymentMethod: "credit" });
   });
 });
 
