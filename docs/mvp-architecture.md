@@ -22,7 +22,7 @@ The owner mobile app will live in a separate repository and consume the versione
 4. Sync queue and conflict-safe server ingestion
 5. Owner dashboard, stock alerts, credit ledger, and exports
 6. Admin tenant onboarding, catalogue price review, subscriptions, and collections
-7. FBR invoice submission and retry status
+7. ~~FBR invoice submission and retry status~~ (excluded from the MVP; planned after it)
 
 The current scaffold contains the runnable application shells, shared contracts, health endpoint, and initial database schema. Domain modules should be added one vertical slice at a time.
 

@@ -13,7 +13,7 @@ The MVP must let a pharmacy:
 - Synchronise safe changes with the cloud backend when connectivity returns.
 - Give owners operational dashboards, reports, alerts, exports, and subscription controls.
 - Give the Pharmica team tenant, catalogue, subscription, collection, and support tools.
-- Submit FBR invoices through the backend when the shop is configured for FBR.
+- ~~Submit FBR invoices through the backend~~ (moved out of the MVP on 2026-10-12; see section 7).
 
 The MVP is complete when a pilot pharmacy can operate its daily counter workflow offline and an owner and Pharmica operator can manage the shop from the connected panels.
 
@@ -228,7 +228,7 @@ Deliverables:
 - Expenses, cash book, and basic profit and loss.
 - Sales, margin by company, tax, and controlled-drug reports.
 - Full data export and migration status.
-- FBR credentials, invoice template, pricing rules, and printer settings.
+- Invoice template, pricing rules, and printer settings.
 - Subscription status, invoices, payment history, and renewal screen.
 
 Exit criteria:
@@ -253,7 +253,6 @@ Deliverables:
 - Duplicate product merge workflow with audit trail.
 - Collections dashboard, overdue shops, grace-mode shops, churn, and cash payment recording.
 - Support view for shop data, sync status, device logs, and audit history.
-- FBR health overview across tenants.
 
 Exit criteria:
 
@@ -306,7 +305,9 @@ Exit criteria:
 - Import failures do not partially corrupt balances.
 - The import can be repeated safely with a clear idempotency policy.
 
-### M11 - FBR and external integrations
+### M11 - FBR and external integrations (NOT IN MVP)
+
+> **Decision 2026-10-12:** FBR integration is excluded from the MVP and will be built after it. Nothing below is part of MVP scope; the section is kept as the design for later. Other milestones should not add FBR fields, screens, or settings.
 
 **Outcome:** Configured Tier-1 shops can submit invoices reliably through the backend.
 
@@ -376,7 +377,6 @@ Before onboarding a real pilot shop:
 - Duplicate sync requests and network interruption scenarios have been tested.
 - Thermal printer, barcode scanner, 2D imager, and cash drawer have been tested on supported Windows hardware.
 - Stock, credit, cash closing, and profit totals reconcile across POS and owner web.
-- FBR sandbox or disabled-mode behavior is documented.
 - Subscription grace mode is tested without blocking local billing.
 - Admin support can inspect sync/device/audit status.
 - Error monitoring, database backups, and migration rollback procedures are documented.
@@ -386,6 +386,7 @@ Before onboarding a real pilot shop:
 
 Do not include these until the MVP has pilot evidence:
 
+- FBR integration (invoice submission, FBR invoice number and QR on receipts, FBR settings and health views). Excluded by decision on 2026-10-12.
 - JazzCash, Easypaisa, or Raast payments at the pharmacy counter.
 - WhatsApp and SMS receipts.
 - Counterfeit serial detection and live DRAP serial verification.
@@ -411,6 +412,6 @@ Do not include these until the MVP has pilot evidence:
 9. Build M8 admin web and onboarding operations.
 10. Add M9 subscriptions and grace mode.
 11. Add M10 migration with a pilot dataset.
-12. Add M11 FBR behind a feature flag and sandbox adapter.
+12. ~~Add M11 FBR~~ (excluded from the MVP; build after it).
 13. Stabilize hardware, localization, backups, monitoring, and pilot release gates.
 14. Build M12 mobile MVP in the separate repository against the stabilized API.

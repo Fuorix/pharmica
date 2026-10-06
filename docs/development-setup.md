@@ -73,13 +73,19 @@ The POS keeps its own database (SQLite in the desktop app, IndexedDB in a browse
 - **Stock control** at the counter (Ctrl+3) or owner panel (Inventory): low stock (alert level in packs), expiring within 90 days, expired stock, write-offs, damage, physical counts, rack locations. Every change needs a reason and is audited.
 - **Stock ledger:** every change to a batch is a stock movement (opening, received, sold, returned, counted, written off...), so each batch's quantity always equals the sum of its movements. The owner Inventory page shows the ledger per product and confirms that stock matches it; `GET /api/v1/inventory/ledger?branchId=...` lists any batch that does not (normally none).
 
+## Credit, suppliers, and the narcotics register
+
+- **Customer credit (khata):** credit sales, repayments (at the counter with F3, even offline, or in the owner panel), and owner-only adjustments with a reason. Cash repayments count in the shift's expected cash. Balances are aged by the oldest unpaid credit (0-30, 31-60, 61-90, 90+ days); "overdue" means owing for more than 30 days. Each customer has a credit limit: **0 (the default for new customers) allows no credit**, an amount caps what they may owe, and "No limit" (stored as empty) is for trusted customers. Customers created before 2026-10-12 with 0 were moved to "No limit", which is how 0 behaved then.
+- **Suppliers (payables):** purchases add to what the shop owes; payments are recorded by cash, bank transfer, or cheque (with a reference), plus adjustments with a reason. Owner panel → Suppliers.
+- **Narcotics register:** selling a controlled (scheduled) drug at the counter requires the patient and doctor (and optionally PMDC number and prescription reference). Each entry is linked to its sale and is **append-only**: a database trigger rejects any UPDATE or DELETE, and voids or returns add REVERSAL entries. Owner panel → Register (printable). Test cleanup tooling may delete its own rows only after `SET LOCAL pharmica.allow_register_purge = 'on'`.
+
 The end-to-end tests drive the real counter in Microsoft Edge against the API and the development database, with the internet cut mid-test:
 
 ```powershell
 pnpm --filter @pharmica/pos e2e
 ```
 
-There are two scenarios: offline billing (sell, void, return, restart, sync) and receiving (scan a 2D code, receive with bonus, sell offline, write off, check the ledger). They create and then delete their own tenant (`e2e-pos-org`). It starts the API and POS dev servers if they are not already running.
+There are three scenarios: offline billing (sell, void, return, restart, sync), receiving (scan a 2D code, receive with bonus, sell offline, write off, check the ledger), and credit with the register (new customer, credit sale, repayment, controlled-drug sale with prescription, shift cash). They create and then delete their own tenant (`e2e-pos-org`). It starts the API and POS dev servers if they are not already running.
 
 ## Database changes
 

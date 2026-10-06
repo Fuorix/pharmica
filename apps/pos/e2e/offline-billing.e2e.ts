@@ -110,7 +110,9 @@ test("a counter bills, voids, and returns with the internet down, survives a res
   const login = await request.post(`${API}/api/v1/auth/login`, { data: { login: "e2e-pos-owner@test.local", credential: "e2e-password-123" } });
   expect(login.ok()).toBe(true);
   const sales = await (await request.get(`${API}/api/v1/sales?branchId=${BRANCH}`)).json() as { sales: Array<{ status: string; total: number }> };
-  expect(sales.sales.map((sale) => [sale.status, sale.total]).sort()).toEqual([["returned", 250], ["voided", 770]]);
+  // Other scenarios share this test pharmacy; this one made the 770 and 250 bills, and each must exist exactly once.
+  const mine = sales.sales.filter((sale) => sale.total === 770 || sale.total === 250);
+  expect(mine.map((sale) => [sale.status, sale.total]).sort()).toEqual([["returned", 250], ["voided", 770]]);
   const catalogue = await (await request.get(`${API}/api/v1/catalogue?branchId=${BRANCH}&q=panadol`)).json() as { products: Array<{ stockQuantity: number }> };
   expect(catalogue.products[0].stockQuantity).toBe(700);
 });
