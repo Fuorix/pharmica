@@ -4,7 +4,7 @@ import { apiError } from "../../../../src/lib/api-response";
 import { corsOptions, withCors } from "../../../../src/lib/cors";
 
 // Never return the device secret hash.
-const deviceFields = { id: true, branchId: true, name: true, activationCode: true, activatedAt: true, isActive: true, lastSeenAt: true, createdAt: true } as const;
+const deviceFields = { id: true, branchId: true, name: true, activationCode: true, activatedAt: true, isActive: true, lastSeenAt: true, createdAt: true, diagnostics: true, diagnosticsAt: true } as const;
 
 export function OPTIONS(request: Request): Response { return corsOptions(request); }
 

@@ -1,6 +1,6 @@
 import type { PosSyncResult } from "@pharmica/contracts";
 import { db, type Prisma } from "@pharmica/database/client";
-import { discountWithinLimit, ledgerBalance, withinCreditLimit, packStructure, refundFor, roundMoney, sellableUnits, unitPrice, unitSize } from "@pharmica/domain";
+import { discountWithinLimit, ledgerBalance, withinCreditLimit, packStructure, refundFor, roundMoney, sellableUnits, unitCost, unitPrice, unitSize } from "@pharmica/domain";
 import { z } from "zod";
 import { AccountError, recordControlledSale, recordCustomerPayment, reverseControlledSale, type AccountContext } from "../accounts/accounts";
 import { adjustStock, applyCount, receivePurchase, StockError, type StockContext } from "../inventory/stock";
@@ -89,7 +89,7 @@ async function applySale(context: Context, payload: Extract<Operation, { type: "
     if (line.unitPrice > unitPrice(Number(batch.retailPrice), line.unit, structure) + 0.005) throw new OperationError("ABOVE_RETAIL_PRICE", `${product.name} was priced above its retail price`);
     const gross = roundMoney(line.quantity * line.unitPrice);
     if (line.discount > gross) throw new OperationError("INVALID_DISCOUNT", "A line discount is larger than the line");
-    return { ...line, product, gross, lineTotal: roundMoney(gross - line.discount), baseUnits: line.quantity * unitSize(line.unit, structure) };
+    return { ...line, product, gross, lineTotal: roundMoney(gross - line.discount), baseUnits: line.quantity * unitSize(line.unit, structure), unitCost: unitCost(batch.costPrice == null ? null : Number(batch.costPrice), line.unit, structure) };
   });
 
   const subtotal = roundMoney(lines.reduce((sum, line) => sum + line.gross, 0));
@@ -131,7 +131,7 @@ async function applySale(context: Context, payload: Extract<Operation, { type: "
       total,
       paymentMethod: paymentMap[payload.paymentMethod],
       createdAt: new Date(operation.occurredAt),
-      lines: { create: lines.map((line) => ({ id: line.lineId, productId: line.productId, batchId: line.batchId, quantity: line.quantity, unit: unitMap[line.unit], unitPrice: line.unitPrice, discount: line.discount, lineTotal: line.lineTotal })) }
+      lines: { create: lines.map((line) => ({ id: line.lineId, unitCost: line.unitCost, productId: line.productId, batchId: line.batchId, quantity: line.quantity, unit: unitMap[line.unit], unitPrice: line.unitPrice, discount: line.discount, lineTotal: line.lineTotal })) }
     }
   });
   await tx.stockMovement.createMany({ data: lines.map((line) => ({ branchId, productId: line.productId, batchId: line.batchId, userId: operation.userId, type: "SALE" as const, quantity: -line.baseUnits, reason: "Sale", referenceId: sale.id, createdAt: new Date(operation.occurredAt) })) });
@@ -263,8 +263,12 @@ async function applyOperation(context: Context): Promise<void> {
 }
 
 /**
- * Applies one uploaded operation exactly once. The operation and its idempotency record commit together,
- * so a retried upload is reported as a duplicate instead of being applied twice.
+ * Applies one uploaded operation exactly once. Each operation's transaction first takes a lock for its device,
+ * then checks whether it was already applied, so two uploads from the same counter arriving together (a retry
+ * racing the original) cannot both apply it. The operation and its idempotency record commit together.
+ *
+ * Outcomes: applied (possibly with flags for the owner), duplicate (already applied), failed (rejected for good:
+ * it could not have happened legitimately), or retry (the server had a problem; the counter tries again later).
  */
 export async function processOperation(device: Device, raw: unknown): Promise<PosSyncResult> {
   const rawId = typeof raw === "object" && raw && "id" in raw && typeof raw.id === "string" ? raw.id : "unknown";
@@ -275,37 +279,47 @@ export async function processOperation(device: Device, raw: unknown): Promise<Po
   }
   const operation = parsed.data;
 
-  const existing = await db.syncOperation.findUnique({ where: { idempotencyKey: operation.id } });
-  if (existing && existing.deviceId !== device.id) return { id: operation.id, status: "failed", error: { code: "OPERATION_ID_CLASH", message: "This operation id belongs to another device" } };
-  if (existing?.status === "APPLIED") return { id: operation.id, status: "duplicate" };
-
   const user = await db.user.findUnique({ where: { id: operation.userId } });
   if (!user || !user.isActive || user.role === "SUPER_ADMIN" || user.organisationId !== device.branch.organisationId || (user.branchId && user.branchId !== device.branchId)) {
-    return record(device, operation, { id: operation.id, status: "failed", error: { code: "USER_NOT_ALLOWED", message: "The user is not allowed to work at this counter" } });
+    return record(device, operation, "FAILED", { id: operation.id, status: "failed", error: { code: "USER_NOT_ALLOWED", message: "The user is not allowed to work at this counter" } });
   }
 
   const flags: string[] = [];
   try {
-    await db.$transaction(async (tx) => {
+    const outcome = await db.$transaction(async (tx) => {
+      // One device's operations are applied one at a time, whichever request they arrive in.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${device.id}))`;
+      const existing = await tx.syncOperation.findUnique({ where: { idempotencyKey: operation.id } });
+      if (existing && existing.deviceId !== device.id) return "clash" as const;
+      if (existing?.status === "APPLIED") return "duplicate" as const;
+
       await applyOperation({ tx, device, operation, flags });
+      const data = { status: "APPLIED" as const, processedAt: new Date(), flags, errorMessage: null, occurredAt: new Date(operation.occurredAt), userId: operation.userId };
       await tx.syncOperation.upsert({
         where: { idempotencyKey: operation.id },
-        create: { idempotencyKey: operation.id, deviceId: device.id, branchId: device.branchId, entityType: operation.type, payload: operation as unknown as Prisma.InputJsonValue, status: "APPLIED", processedAt: new Date(), errorMessage: flags.length ? flags.join(",") : null },
-        update: { status: "APPLIED", processedAt: new Date(), retryCount: { increment: 1 }, errorMessage: flags.length ? flags.join(",") : null }
+        create: { idempotencyKey: operation.id, deviceId: device.id, branchId: device.branchId, entityType: operation.type, payload: operation as unknown as Prisma.InputJsonValue, ...data },
+        update: { ...data, retryCount: { increment: 1 } }
       });
+      return "applied" as const;
     });
+    if (outcome === "clash") return { id: operation.id, status: "failed", error: { code: "OPERATION_ID_CLASH", message: "This operation id belongs to another device" } };
+    if (outcome === "duplicate") return { id: operation.id, status: "duplicate" };
     return { id: operation.id, status: "applied", ...(flags.length ? { flags } : {}) };
   } catch (error) {
-    const failure = error instanceof OperationError || error instanceof StockError || error instanceof AccountError ? { code: error.code, message: error.message } : { code: "OPERATION_FAILED", message: "The server could not apply this operation" };
-    return record(device, operation, { id: operation.id, status: "failed", error: failure });
+    if (error instanceof OperationError || error instanceof StockError || error instanceof AccountError) {
+      return record(device, operation, "FAILED", { id: operation.id, status: "failed", error: { code: error.code, message: error.message } });
+    }
+    // Not the counter's fault (database busy, deadlock, a bug): keep it queued and try again later.
+    return record(device, operation, "PENDING", { id: operation.id, status: "retry", error: { code: "SERVER_BUSY", message: "The server could not apply this right now; it will be retried" } });
   }
 }
 
-async function record(device: Device, operation: Operation, result: PosSyncResult): Promise<PosSyncResult> {
-  await db.syncOperation.upsert({
-    where: { idempotencyKey: operation.id },
-    create: { idempotencyKey: operation.id, deviceId: device.id, branchId: device.branchId, entityType: operation.type, payload: operation as unknown as Prisma.InputJsonValue, status: "FAILED", errorMessage: `${result.error?.code}: ${result.error?.message}`, processedAt: new Date() },
-    update: { status: "FAILED", errorMessage: `${result.error?.code}: ${result.error?.message}`, processedAt: new Date(), retryCount: { increment: 1 } }
-  });
+/** Notes a failed or postponed operation. Never overwrites one that was already applied. */
+async function record(device: Device, operation: Operation, status: "FAILED" | "PENDING", result: PosSyncResult): Promise<PosSyncResult> {
+  const data = { status, errorMessage: `${result.error?.code}: ${result.error?.message}`, processedAt: new Date(), occurredAt: new Date(operation.occurredAt), userId: operation.userId };
+  const updated = await db.syncOperation.updateMany({ where: { idempotencyKey: operation.id, deviceId: device.id, status: { not: "APPLIED" } }, data: { ...data, retryCount: { increment: 1 } } });
+  if (updated.count === 0) {
+    await db.syncOperation.createMany({ data: [{ idempotencyKey: operation.id, deviceId: device.id, branchId: device.branchId, entityType: operation.type, payload: operation as unknown as Prisma.InputJsonValue, ...data }], skipDuplicates: true });
+  }
   return result;
 }

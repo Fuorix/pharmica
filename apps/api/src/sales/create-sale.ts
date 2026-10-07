@@ -1,6 +1,6 @@
 import type { SaleUnit } from "@pharmica/contracts";
 import type { Prisma } from "@pharmica/database/client";
-import { allocateFefo, availableUnits, packStructure, roundMoney, sellableUnits, sellingPackPrice, unitPrice, unitSize } from "@pharmica/domain";
+import { allocateFefo, availableUnits, packStructure, roundMoney, sellableUnits, sellingPackPrice, unitCost, unitPrice, unitSize } from "@pharmica/domain";
 
 export interface SaleLineInput {
   productId: string;
@@ -18,7 +18,7 @@ export class SaleError extends Error {
 
 const unitMap = { pack: "PACK", strip: "STRIP", tablet: "TABLET" } as const;
 
-type PreparedLine = { productId: string; batchId: string; quantity: number; unit: "PACK" | "STRIP" | "TABLET"; unitPrice: number; lineTotal: number; baseUnits: number };
+type PreparedLine = { productId: string; batchId: string; quantity: number; unit: "PACK" | "STRIP" | "TABLET"; unitPrice: number; lineTotal: number; unitCost: number | null; baseUnits: number };
 
 /**
  * Turns requested lines into priced, batch-specific sale lines and takes the stock, inside `transaction`.
@@ -62,7 +62,7 @@ export async function takeStockForSale(
       const price = roundMoney(line.unitPrice ?? ceiling);
       const baseUnits = allocation.units * size;
       promised.set(batch.id, (promised.get(batch.id) ?? 0) + baseUnits);
-      prepared.push({ productId: product.id, batchId: batch.id, quantity: allocation.units, unit: unitMap[line.unit], unitPrice: price, lineTotal: roundMoney(allocation.units * price), baseUnits });
+      prepared.push({ productId: product.id, batchId: batch.id, quantity: allocation.units, unit: unitMap[line.unit], unitPrice: price, lineTotal: roundMoney(allocation.units * price), unitCost: unitCost(batch.costPrice == null ? null : Number(batch.costPrice), line.unit, structure), baseUnits });
     }
   }
 
