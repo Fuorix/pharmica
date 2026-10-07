@@ -1,9 +1,21 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import type { DeviceDiagnostics } from "@pharmica/contracts";
+import { SyncIssuesPanel } from "./SyncIssuesPanel";
 import { apiFetch, errorMessage, jsonBody, useOwnerSession } from "./session";
 
 type Branch = { id: string; name: string };
 type StaffUser = { id: string; name: string; login: string; role: "owner" | "cashier"; branchId: string | null; isActive: boolean; hasPin: boolean; maxDiscountPercent: number | null };
-type Device = { id: string; name: string; branchId: string; activationCode: string; activatedAt: string | null; isActive: boolean; lastSeenAt: string | null };
+type Device = { id: string; name: string; branchId: string; activationCode: string; activatedAt: string | null; isActive: boolean; lastSeenAt: string | null; diagnostics: DeviceDiagnostics | null; diagnosticsAt: string | null };
+
+/** One line on how a counter's uploads are doing, from what it last reported. */
+function deviceHealth(device: Device): string {
+  const report = device.diagnostics;
+  if (!report) return "no sync report yet";
+  const parts = [report.pending ? `${report.pending} waiting to upload` : "all uploaded"];
+  if (report.failed) parts.push(`${report.failed} rejected`);
+  if (report.consecutiveFailures) parts.push(`${report.consecutiveFailures} failed syncs in a row`);
+  return parts.join(", ");
+}
 
 const emptyUser = { name: "", login: "", role: "cashier" as "cashier" | "owner", branchId: "", pin: "", credential: "", maxDiscountPercent: "5" };
 
@@ -84,7 +96,7 @@ export function StaffPage({ branches }: { branches: Branch[] }) {
       <article className="panel">
         <div className="panel-heading"><h2>POS devices</h2><span>{devices.filter((device) => device.isActive).length} active</span></div>
         {devices.map((device) => <div className={device.isActive ? "staff-row" : "staff-row inactive"} key={device.id}>
-          <div><strong>{device.name}</strong><span>{branchName(device.branchId)} · {device.activatedAt ? `activated, last seen ${device.lastSeenAt ? new Date(device.lastSeenAt).toLocaleString() : "never"}` : <>activation code <code>{device.activationCode}</code></>}</span></div>
+          <div><strong>{device.name}</strong><span>{branchName(device.branchId)} · {device.activatedAt ? `activated, ${deviceHealth(device)}, last seen ${device.lastSeenAt ? new Date(device.lastSeenAt).toLocaleString() : "never"}` : <>activation code <code>{device.activationCode}</code></>}</span></div>
           <div className="row-actions">
             {device.activatedAt && <button className="secondary" onClick={() => window.confirm(`Reset ${device.name}? The counter will need a new activation code.`) && void send("/api/v1/devices", "PATCH", { deviceId: device.id, resetActivation: true }, `${device.name} reset; a new activation code is shown`)}>Reset</button>}
             <button className="secondary" onClick={() => void send("/api/v1/devices", "PATCH", { deviceId: device.id, isActive: !device.isActive }, `${device.name} ${device.isActive ? "deactivated; it can no longer sell" : "reactivated"}`)}>{device.isActive ? "Deactivate" : "Reactivate"}</button>
@@ -97,5 +109,6 @@ export function StaffPage({ branches }: { branches: Branch[] }) {
         </form>
       </article>
     </section>
+    <SyncIssuesPanel branches={branches} />
   </>;
 }
