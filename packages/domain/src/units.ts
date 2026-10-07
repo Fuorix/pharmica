@@ -49,3 +49,9 @@ export function unitPrice(packPrice: number, unit: SaleUnit, structure: PackStru
 export function sellingPackPrice(batchRetailPrice: number, override: number | null | undefined): number {
   return override == null ? batchRetailPrice : Math.min(batchRetailPrice, override);
 }
+
+/** Cost of one selling unit from the batch's cost per pack, kept to four decimals so tablet costs stay exact enough. */
+export function unitCost(packCost: number | null, unit: SaleUnit, structure: PackStructure): number | null {
+  if (packCost == null) return null;
+  return Math.round(packCost * unitSize(unit, structure) / unitSize("pack", structure) * 10_000) / 10_000;
+}

@@ -299,6 +299,15 @@ export interface PosSnapshot {
   batches: PosBatch[];
   customers: PosCustomer[];
   suppliers: Array<{ id: string; name: string }>;
+  /** What the owner set for printed receipts at this branch. Older snapshots may not have it. */
+  receipt?: PosReceiptSettings;
+}
+
+export interface PosReceiptSettings {
+  header: string;
+  footer: string;
+  address: string | null;
+  phone: string | null;
 }
 
 export interface PosSaleLine {
@@ -365,7 +374,8 @@ export type PosOperationType = PosOperation["type"];
 
 export interface PosSyncResult {
   id: string;
-  status: "applied" | "duplicate" | "failed";
+  /** retry: the server had a problem (not the counter's fault); keep the operation queued and try again later. */
+  status: "applied" | "duplicate" | "failed" | "retry";
   error?: { code: string; message: string };
   /** Accepted, but something needs the owner's attention (e.g. stock oversold between counters). */
   flags?: string[];
@@ -435,4 +445,215 @@ export interface ControlledRegisterEntry {
   recordedBy: string;
   receiptNo: string | null;
   reversesId: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Sync recovery: master list downloads, counter health, and sync issues.
+// ---------------------------------------------------------------------------
+
+/** One page of the master list, oldest change first. Pass `nextCursor` back to resume where the last page ended. */
+export interface MasterListPage {
+  products: MasterProductSummary[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+/** What a counter reports about its own sync health, for the owner and Pharmica support. */
+export interface DeviceDiagnostics {
+  appVersion: string;
+  reportedAt: string;
+  pending: number;
+  failed: number;
+  /** When the oldest operation still waiting to upload was made. */
+  oldestPendingAt: string | null;
+  lastSyncAt: string | null;
+  lastSnapshotAt: string | null;
+  consecutiveFailures: number;
+  lastError: string | null;
+  masterProducts: number;
+  localSales: number;
+}
+
+export interface DeviceHealth {
+  id: string;
+  name: string;
+  branchId: string;
+  isActive: boolean;
+  lastSeenAt: string | null;
+  diagnostics: DeviceDiagnostics | null;
+  diagnosticsAt: string | null;
+}
+
+/** An uploaded operation the owner should look at: rejected by the server, or accepted with flags. */
+export interface SyncIssue {
+  id: string;
+  deviceId: string;
+  deviceName: string;
+  type: string;
+  status: "rejected" | "flagged" | "retrying";
+  flags: string[];
+  error: string | null;
+  occurredAt: string | null;
+  processedAt: string | null;
+  userName: string | null;
+  /** Short description, e.g. "Receipt 7K2Q-000012, PKR 930.00". */
+  summary: string;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+  reviewNote: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Owner reports. Every figure comes from a named query over a stated period (Pakistan time).
+// ---------------------------------------------------------------------------
+
+export interface ReportTotals {
+  /** Money received after all discounts, less returns. */
+  revenue: number;
+  /** Cost of the goods sold whose cost is known. */
+  cost: number;
+  grossProfit: number;
+  marginPercent: number | null;
+  discounts: number;
+  returns: number;
+  /** Revenue on early sales whose cost is unknown; left out of profit. */
+  revenueWithoutCost: number;
+  bills: number;
+}
+
+export interface BranchSettings {
+  receiptHeader: string;
+  receiptFooter: string;
+  /** Batches expiring within this many days count as near expiry. */
+  nearExpiryDays: number;
+  /** Credit owed for longer than this many days counts as overdue. */
+  overdueDays: number;
+  /** A discount of at least this percent of the bill raises an alert. */
+  largeDiscountPercent: number;
+}
+
+export type AlertKind = "void" | "return" | "large_discount" | "discount_over_limit" | "line_deleted" | "drawer_opened" | "missing_prescription" | "oversold" | "stock_written_off" | "failed_logins";
+
+export interface AlertItem {
+  id: string;
+  at: string;
+  kind: AlertKind;
+  severity: "high" | "medium" | "low";
+  branchId: string | null;
+  branchName: string | null;
+  userName: string | null;
+  description: string;
+}
+
+export interface DashboardBranch {
+  branchId: string;
+  branchName: string;
+  today: ReportTotals;
+  /** Cash that should be in the drawers of open shifts; null when no shift is open. */
+  cashInDrawer: number | null;
+  openShifts: number;
+  lowStock: number;
+  nearExpiry: number;
+  /** Counters with work not yet uploaded: today's figures may still change. */
+  unsyncedCounters: number;
+  pendingUploads: number;
+}
+
+export interface DashboardResponse {
+  day: string;
+  generatedAt: string;
+  totals: ReportTotals;
+  branches: DashboardBranch[];
+  topItems: Array<{ productId: string; name: string; revenue: number; grossProfit: number }>;
+  last7Days: Array<{ day: string; revenue: number; grossProfit: number }>;
+  alerts: AlertItem[];
+}
+
+export interface SalesReportRow extends ReportTotals {
+  key: string;
+  label: string;
+}
+
+export interface ProfitAndLoss {
+  from: string;
+  to: string;
+  revenue: number;
+  costOfGoods: number;
+  grossProfit: number;
+  /** Cost of stock written off, damaged, or expired in the period. */
+  stockLosses: number;
+  expenses: number;
+  expensesByCategory: Array<{ category: string; amount: number }>;
+  netProfit: number;
+  revenueWithoutCost: number;
+}
+
+export interface CashBookDay {
+  day: string;
+  cashSales: number;
+  repayments: number;
+  refunds: number;
+  expenses: number;
+  supplierPayments: number;
+  /** Cash in minus cash out for the day. */
+  net: number;
+}
+
+export interface StockHealthItem {
+  productId: string;
+  name: string;
+  company: string | null;
+  /** Sellable stock in base units, and units per pack to show it in packs. */
+  sellable: number;
+  unitsPerPack: number;
+  valueAtCost: number;
+  lastSoldAt: string | null;
+  /** Average base units sold per day over the last 30 days. */
+  avgDailySold: number;
+  /** How many days the stock lasts at that rate; null when nothing sold. */
+  daysOfCover: number | null;
+  suggestedPacks: number;
+  reason: "dead" | "reorder";
+}
+
+export interface PriceUpdate {
+  productId: string;
+  name: string;
+  masterProductId: string;
+  oldPrice: number | null;
+  newPrice: number;
+  effectiveFrom: string;
+  source: string;
+  reference: string | null;
+  scheduled: boolean;
+  shopPrice: number | null;
+  /** Packs on the shelf still printed with an older price. */
+  packsAtOtherPrices: number;
+}
+
+export interface ShiftSummary {
+  id: string;
+  branchId: string;
+  deviceName: string | null;
+  userName: string;
+  status: "open" | "closed";
+  openedAt: string;
+  closedAt: string | null;
+  openingCash: number;
+  closingCash: number | null;
+  expectedCash: number | null;
+  variance: number | null;
+  bills: number;
+  revenue: number;
+}
+
+export interface ExpenseItem {
+  id: string;
+  branchId: string;
+  category: string;
+  amount: number;
+  paidFrom: "cash" | "bank";
+  note: string | null;
+  spentAt: string;
+  recordedBy: string;
 }

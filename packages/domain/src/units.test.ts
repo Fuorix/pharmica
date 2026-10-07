@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { packStructure, sellableUnits, sellingPackPrice, unitPrice, unitSize } from "./units";
+import { packStructure, sellableUnits, sellingPackPrice, unitCost, unitPrice, unitSize } from "./units";
 
 const tablets = { stripsPerPack: 2, tabletsPerStrip: 10 };
 const syrup = { stripsPerPack: 1, tabletsPerStrip: 1 };
@@ -30,6 +30,13 @@ describe("prices", () => {
     expect(unitPrice(200, "strip", tablets)).toBe(100);
     expect(unitPrice(200, "tablet", tablets)).toBe(10);
     expect(unitPrice(100, "tablet", { stripsPerPack: 3, tabletsPerStrip: 10 })).toBe(3.33);
+  });
+
+  it("splits the pack cost down to strips and tablets", () => {
+    expect(unitCost(152, "pack", tablets)).toBe(152);
+    expect(unitCost(152, "strip", tablets)).toBe(76);
+    expect(unitCost(100, "tablet", { stripsPerPack: 3, tabletsPerStrip: 10 })).toBe(3.3333);
+    expect(unitCost(null, "pack", tablets)).toBeNull();
   });
 
   it("lets a shop override lower the batch price but never raise it", () => {

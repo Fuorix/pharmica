@@ -20,8 +20,13 @@ model Branch {
   id             String       @id @default(cuid())
   organisationId String
   name           String
+  address        String?
+  phone          String?
+  /// Owner settings: receipt header and footer, near-expiry and overdue windows, default paper width.
+  settings       Json?
   organisation   Organisation @relation(fields: [organisationId], references: [id])
   users          User[]
+  expenses       Expense[]
   devices        Device[]
   products       Product[]
   sales          Sale[]
@@ -35,7 +40,6 @@ model Branch {
   customerLedger CustomerLedgerEntry[]
   supplierLedger SupplierLedgerEntry[]
     controlledDrugRecords ControlledDrugRecord[]
-    syncChanges    SyncChange[]
 }
 
 model User {
@@ -64,6 +68,7 @@ model User {
   supplierLedger SupplierLedgerEntry[]
   controlledDrugRecords ControlledDrugRecord[]
   saleReturns    SaleReturn[]
+  expenses       Expense[]
 }
 
 enum UserRole {
@@ -82,10 +87,11 @@ model Device {
   isActive     Boolean   @default(true)
   lastSeenAt   DateTime?
   createdAt    DateTime  @default(now())
-  syncCursor   Int       @default(0)
+  /// Sync health the counter last reported (queue sizes, last error, app version) for support.
+  diagnostics  Json?
+  diagnosticsAt DateTime?
   branch       Branch    @relation(fields: [branchId], references: [id])
   syncOperations SyncOperation[]
-  syncChanges    SyncChange[]
   sessions       Session[]
 }
 
@@ -98,13 +104,22 @@ model SyncOperation {
   status         SyncOperationStatus @default(PENDING)
   retryCount     Int      @default(0)
   errorMessage   String?
+  /// Accepted, but something the owner should review (e.g. OVERSOLD, CREDIT_LIMIT_EXCEEDED).
+  flags          String[] @default([])
+  /// When the counter says the operation happened.
+  occurredAt     DateTime?
+  userId         String?
+  /// Set when the owner has looked at a flagged or rejected operation.
+  reviewedAt     DateTime?
+  reviewedById   String?
+  reviewNote     String?
   nextAttemptAt  DateTime?
   createdAt      DateTime @default(now())
   processedAt    DateTime?
   device         Device   @relation(fields: [deviceId], references: [id])
-  changes        SyncChange[]
 
   @@index([deviceId, createdAt])
+  @@index([branchId, status])
 }
 
 enum SyncOperationStatus {
@@ -112,23 +127,6 @@ enum SyncOperationStatus {
   APPLIED
   CONFLICT
   FAILED
-}
-
-model SyncChange {
-  cursor         Int      @id @default(autoincrement())
-  branchId       String
-  deviceId       String
-  operationId    String?
-  entityType     String
-  entityId       String
-  version        Int      @default(1)
-  payload        Json
-  createdAt      DateTime @default(now())
-  branch         Branch   @relation(fields: [branchId], references: [id])
-  device         Device   @relation(fields: [deviceId], references: [id])
-  operation      SyncOperation? @relation(fields: [operationId], references: [idempotencyKey])
-
-  @@index([branchId, cursor])
 }
 
 model Session {
@@ -215,11 +213,13 @@ model MasterProduct {
   isControlled         Boolean              @default(false)
   source               String?
   createdAt            DateTime             @default(now())
+  /// Counters download the master list in pages ordered by (updatedAt, id) and resume from the last one.
   updatedAt            DateTime             @updatedAt
   products             Product[]
   priceHistory         MasterPriceHistory[]
 
   @@index([name])
+  @@index([updatedAt, id])
   @@index([generic])
   @@index([company])
 }
@@ -604,6 +604,9 @@ model SaleLine {
   unitPrice  Decimal  @db.Decimal(12, 2)
   discount   Decimal  @default(0) @db.Decimal(12, 2)
   lineTotal  Decimal  @db.Decimal(12, 2)
+  /// What one sold unit cost the shop when it was sold (the batch's real cost), so profit never changes later.
+  /// Null for early sales whose cost is unknown.
+  unitCost   Decimal? @db.Decimal(12, 4)
   sale       Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
   product    Product  @relation(fields: [productId], references: [id])
   batch      Batch?   @relation(fields: [batchId], references: [id])
@@ -656,4 +659,22 @@ model SaleReturnLine {
   saleLine   SaleLine   @relation(fields: [saleLineId], references: [id])
 
   @@index([saleLineId])
+}
+
+/// Money the shop spends that is not stock: rent, salaries, electricity, and so on.
+model Expense {
+  id        String   @id @default(cuid())
+  branchId  String
+  userId    String
+  category  String
+  amount    Decimal  @db.Decimal(12, 2)
+  /// cash (comes out of the drawer) or bank.
+  paidFrom  String   @default("cash")
+  note      String?
+  spentAt   DateTime @default(now())
+  createdAt DateTime @default(now())
+  branch    Branch   @relation(fields: [branchId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([branchId, spentAt])
 }
