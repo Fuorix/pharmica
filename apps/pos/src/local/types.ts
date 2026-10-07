@@ -136,6 +136,11 @@ export interface SyncStatus {
   lastSyncAt: string | null;
   lastSnapshotAt: string | null;
   error: string | null;
+  /** Sync attempts that failed in a row; drives the backoff. */
+  consecutiveFailures: number;
+  nextAttemptAt: string | null;
+  /** Master-list medicines stored on this counter for offline receiving. */
+  masterProducts: number;
 }
 
 /** What the counter works from: the last server snapshot adjusted by everything not yet confirmed. */

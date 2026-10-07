@@ -1,4 +1,4 @@
-import type { MasterProductSummary, PosOperation, PosSnapshot, PosStaffMember, PosSyncResult } from "@pharmica/contracts";
+import type { DeviceDiagnostics, MasterListPage, MasterProductSummary, PosOperation, PosSnapshot, PosStaffMember, PosSyncResult } from "@pharmica/contracts";
 import { beforeEach, describe, expect, it } from "vitest";
 import { memoryDb, type LocalDb } from "./db";
 import { DeviceRevokedError, OfflineError, PosEngine, type Transport } from "./engine";
@@ -42,6 +42,23 @@ class FakeServer implements Transport {
     return this.current;
   }
   master: MasterProductSummary[] = [{ id: "m-risek", name: "Risek 20mg", brand: "Risek", generic: "Omeprazole", company: "Getz Pharma", dosageForm: "Capsule", strength: "20mg", barcode: "2000000000099", unitsPerPack: 1, tabletsPerStrip: 14, officialRetailPrice: 350, isPrescriptionOnly: false, isControlled: false }];
+  reports: DeviceDiagnostics[] = [];
+  masterRequests: Array<string | null> = [];
+  /** Operation types the server answers "retry" for, as if its database were struggling. */
+  busyFor: string | null = null;
+  /** Drop the connection after this many master-list pages. */
+  masterPagesBeforeDrop = Infinity;
+  /** Serves the master list one product per page; the cursor is the index of the next product. */
+  async masterList(since: string | null): Promise<MasterListPage> {
+    if (this.offline || this.masterPagesBeforeDrop-- <= 0) throw new OfflineError("offline");
+    this.masterRequests.push(since);
+    const start = since ? Number(since) : 0;
+    const products = this.master.slice(start, start + 1);
+    return { products, nextCursor: String(start + products.length), hasMore: start + 1 < this.master.length };
+  }
+  async reportDiagnostics(report: DeviceDiagnostics) {
+    this.reports.push(report);
+  }
   async searchMaster(query: string) {
     if (this.offline) throw new OfflineError("offline");
     return this.master.filter((item) => item.name.toLowerCase().includes(query.toLowerCase()));
@@ -51,6 +68,7 @@ class FakeServer implements Transport {
     if (this.revoked) throw new DeviceRevokedError("revoked");
     return operations.map((operation) => {
       if (this.reject === operation.type) return { id: operation.id, status: "failed", error: { code: "REJECTED", message: "no" } };
+      if (this.busyFor === operation.type) return { id: operation.id, status: "retry", error: { code: "SERVER_BUSY", message: "busy" } };
       const duplicate = this.received.some((seen) => seen.id === operation.id);
       if (!duplicate) this.received.push(operation);
       return { id: operation.id, status: duplicate ? "duplicate" : "applied" };
@@ -255,8 +273,14 @@ describe("receiving and stock control offline", () => {
     expect(engine.getState().stock!.batches.find((entry) => entry.batchNo === "NEW-2")?.quantity).toBe(60);
   });
 
-  it("needs the internet to search the master list", async () => {
-    await expect(engine.searchMaster("risek")).rejects.toThrow(OfflineError);
+  it("searches the master list stored on the counter, even offline", async () => {
+    expect(server.offline).toBe(true);
+    expect((await engine.searchMaster("omeprazole")).map((product) => product.name)).toEqual(["Risek 20mg"]);
+  });
+
+  it("asks the server before the first master-list download, and needs the internet for that", async () => {
+    const fresh = await PosEngine.open(memoryDb(), server, "device-new");
+    await expect(fresh.searchMaster("risek")).rejects.toThrow(OfflineError);
   });
 });
 
@@ -293,6 +317,49 @@ describe("credit limits", () => {
     await expect(sell([{ quantity: 1 }], { paymentMethod: "credit", customerId: plain.id })).rejects.toThrow("not allowed credit");
     const trusted = await engine.createCustomer(cashier, { name: "Regular", creditLimit: null });
     await expect(sell([{ quantity: 1 }], { paymentMethod: "credit", customerId: trusted.id })).resolves.toMatchObject({ paymentMethod: "credit" });
+  });
+});
+
+describe("sync recovery", () => {
+  it("keeps an operation queued and backs off when the server has a problem, then sets it aside after repeated failures", async () => {
+    await sell([{ quantity: 1 }]);
+    server.offline = false;
+    server.busyFor = "sale";
+    const failuresBefore = engine.getState().sync.consecutiveFailures;
+    await engine.syncNow();
+    expect(engine.getState().sync).toMatchObject({ pending: 1, failed: 0 });
+    expect(engine.getState().sync.consecutiveFailures).toBeGreaterThan(failuresBefore);
+    expect(engine.getState().outbox[0]).toMatchObject({ status: "pending", attempts: 1 });
+    for (let attempt = 2; attempt <= 8; attempt++) await engine.syncNow();
+    expect(engine.getState().sync).toMatchObject({ pending: 0, failed: 1 });
+    expect(engine.getState().outbox[0].error?.code).toBe("SERVER_KEPT_FAILING");
+    // Billing carries on throughout.
+    await expect(sell([{ quantity: 1 }])).resolves.toMatchObject({ total: 300 });
+  });
+
+  it("resumes the master-list download where a dropped connection left it", async () => {
+    server.master = [...server.master, { ...server.master[0], id: "m-2", name: "Second" }, { ...server.master[0], id: "m-3", name: "Third" }];
+    const db2 = memoryDb();
+    const counter = await PosEngine.open(db2, server, "device-2");
+    server.offline = false;
+    server.masterPagesBeforeDrop = 1;
+    await counter.syncNow();
+    expect(counter.getState().sync.masterProducts).toBe(1);
+    server.masterRequests = [];
+    server.masterPagesBeforeDrop = Infinity;
+    await counter.syncNow();
+    expect(server.masterRequests).toEqual(["1", "2"]);
+    expect(counter.getState().sync.masterProducts).toBe(3);
+  });
+
+  it("reports its health after each sync, and exports diagnostics without patient details", async () => {
+    await engine.completeSale({ user: cashier, items: [{ key: "x", productId: "p-xanax", unit: "pack", quantity: 1, discount: 0 }], billDiscount: 0, paymentMethod: "cash", prescription: { patientName: "Ahmed Raza", doctorName: "Dr. Saima" } });
+    const exported = JSON.stringify(engine.exportDiagnostics());
+    expect(exported).not.toContain("Ahmed Raza");
+    expect(exported).toContain("\"type\":\"sale\"");
+    server.offline = false;
+    await engine.syncNow();
+    expect(server.reports.at(-1)).toMatchObject({ pending: 0, failed: 0, consecutiveFailures: 0, masterProducts: 1, localSales: 1 });
   });
 });
 

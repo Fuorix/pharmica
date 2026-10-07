@@ -1,4 +1,4 @@
-import { DEVICE_TOKEN_HEADER, type MasterProductSummary, type PosOperation, type PosSnapshot, type PosSyncResult } from "@pharmica/contracts";
+import { DEVICE_TOKEN_HEADER, type DeviceDiagnostics, type MasterListPage, type MasterProductSummary, type PosOperation, type PosSnapshot, type PosSyncResult } from "@pharmica/contracts";
 import { DeviceRevokedError, OfflineError, type Transport } from "./engine";
 
 /** Talks to the API with the counter's device token, so uploads work whether or not anyone is signed in. */
@@ -25,6 +25,12 @@ export function httpTransport(apiUrl: string, deviceToken: string): Transport {
     },
     async searchMaster(query: string) {
       return (await (await send(`/api/v1/pos/master?q=${encodeURIComponent(query)}`)).json() as { products: MasterProductSummary[] }).products;
+    },
+    async masterList(since: string | null) {
+      return await (await send(`/api/v1/pos/master-list${since ? `?since=${encodeURIComponent(since)}` : ""}`)).json() as MasterListPage;
+    },
+    async reportDiagnostics(report: DeviceDiagnostics) {
+      await send("/api/v1/pos/diagnostics", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(report) });
     },
     async push(operations: PosOperation[]) {
       const response = await send("/api/v1/pos/sync", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ operations }) });

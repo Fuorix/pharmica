@@ -1,7 +1,9 @@
-import type { CatalogueProduct, MasterProductSummary, PaymentMethod, PosBatch, PosCustomer, PosOperation, PosSnapshot, PosStaffMember, PosSyncResult, Prescription, ReceivePurchaseLine, StockAdjustmentType } from "@pharmica/contracts";
+import packageJson from "../../package.json";
+import type { CatalogueProduct, DeviceDiagnostics, MasterListPage, MasterProductSummary, PaymentMethod, PosBatch, PosCustomer, PosOperation, PosSnapshot, PosStaffMember, PosSyncResult, Prescription, ReceivePurchaseLine, StockAdjustmentType } from "@pharmica/contracts";
 import { billTotals, computeShiftReport, discountWithinLimit, withinCreditLimit, formatReceiptNo, NEAR_EXPIRY_DAYS, priceCart, purchaseTotals, refundFor, roundMoney, sellableUnits, type CartItem, type CartProblem } from "@pharmica/domain";
 import type { Entry, LocalDb } from "./db";
-import { workingStock, type WorkingStock } from "./state";
+import { nextSyncDelay } from "./schedule";
+import { searchMasterList, workingStock, type WorkingStock } from "./state";
 import type { HeldBill, LocalPayment, LocalPurchase, LocalReturn, LocalSale, LocalShift, PosSettings, QueuedOperation, SyncStatus } from "./types";
 
 export interface ReceiveInput {
@@ -32,6 +34,8 @@ export interface Transport {
   snapshot(): Promise<PosSnapshot>;
   push(operations: PosOperation[]): Promise<PosSyncResult[]>;
   searchMaster(query: string): Promise<MasterProductSummary[]>;
+  masterList(since: string | null): Promise<MasterListPage>;
+  reportDiagnostics(report: DeviceDiagnostics): Promise<void>;
 }
 
 /** A refusal the cashier must see, e.g. not enough stock or a discount above their limit. */
@@ -56,6 +60,11 @@ export interface EngineState {
 }
 
 const RECENT_SALES = 500;
+/** After this many server-side failures an operation is set aside as rejected, so it cannot block the queue forever. */
+const MAX_SERVER_RETRIES = 8;
+/** Master-list pages fetched per sync, so a first download of a large list is spread over a few syncs. */
+const MASTER_PAGES_PER_SYNC = 20;
+export const APP_VERSION = packageJson.version;
 const SYNC_BATCH = 50;
 const newId = () => crypto.randomUUID();
 const nowIso = () => new Date().toISOString();
@@ -67,8 +76,9 @@ const nowIso = () => new Date().toISOString();
 export class PosEngine {
   private listeners = new Set<() => void>();
   private state: EngineState;
-  private timer: ReturnType<typeof setInterval> | null = null;
   private syncing: Promise<void> | null = null;
+  private lastRunOk = true;
+  private masterCache: MasterProductSummary[] | null = null;
   private syncAgain = false;
 
   private constructor(private db: LocalDb, private transport: Transport, private deviceId: string, initial: EngineState) {
@@ -78,7 +88,7 @@ export class PosEngine {
   static async open(db: LocalDb, transport: Transport, deviceId: string): Promise<PosEngine> {
     const engine = new PosEngine(db, transport, deviceId, {
       snapshot: null, stock: null, outbox: [], sales: [], held: [], purchases: [], payments: [], shift: null, settings: { paperWidth: 80 }, deviceRevoked: false,
-      sync: { online: typeof navigator === "undefined" ? true : navigator.onLine, syncing: false, pending: 0, failed: 0, lastSyncAt: null, lastSnapshotAt: null, error: null }
+      sync: { online: typeof navigator === "undefined" ? true : navigator.onLine, syncing: false, pending: 0, failed: 0, lastSyncAt: null, lastSnapshotAt: null, error: null, consecutiveFailures: 0, nextAttemptAt: null, masterProducts: 0 }
     });
     await engine.reload();
     return engine;
@@ -99,7 +109,7 @@ export class PosEngine {
   }
 
   private async reload() {
-    const [snapshot, outbox, sales, held, shift, settings, localCustomers, lastSyncAt, purchases, payments] = await Promise.all([
+    const [snapshot, outbox, sales, held, shift, settings, localCustomers, lastSyncAt, purchases, payments, masterCount] = await Promise.all([
       this.db.get<PosSnapshot>("meta", "snapshot"),
       this.db.all<QueuedOperation>("outbox"),
       this.db.all<LocalSale>("sales"),
@@ -109,7 +119,8 @@ export class PosEngine {
       this.db.all<PosCustomer>("customers"),
       this.db.get<string>("meta", "lastSyncAt"),
       this.db.all<LocalPurchase>("purchases"),
-      this.db.all<LocalPayment>("payments")
+      this.db.all<LocalPayment>("payments"),
+      this.db.get<number>("meta", "masterCount")
     ]);
     sales.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     this.set({
@@ -122,7 +133,7 @@ export class PosEngine {
       payments: payments.reverse().slice(0, 500),
       shift,
       settings: settings ?? { paperWidth: 80 },
-      sync: { ...this.state.sync, pending: outbox.filter((op) => op.status === "pending").length, failed: outbox.filter((op) => op.status === "failed").length, lastSyncAt, lastSnapshotAt: snapshot?.generatedAt ?? null }
+      sync: { ...this.state.sync, pending: outbox.filter((op) => op.status === "pending").length, failed: outbox.filter((op) => op.status === "failed").length, lastSyncAt, lastSnapshotAt: snapshot?.generatedAt ?? null, masterProducts: masterCount ?? 0 }
     });
   }
 
@@ -272,8 +283,41 @@ export class PosEngine {
 // ----- stock -----
 
   /** Medicines on the master list that this branch does not stock yet. Needs the internet. */
-  searchMaster(query: string): Promise<MasterProductSummary[]> {
-    return this.transport.searchMaster(query);
+  /**
+   * Master-list medicines this branch does not stock yet. Uses the copy stored on the counter (so it works
+   * offline); before the first download it asks the server instead.
+   */
+  async searchMaster(query: string): Promise<MasterProductSummary[]> {
+    const local = await this.localMaster();
+    if (!local.length) return this.transport.searchMaster(query);
+    const stocked = new Set((this.state.stock?.catalogue ?? []).map((product) => product.masterProductId).filter(Boolean));
+    return searchMasterList(local.filter((product) => !stocked.has(product.id)), query);
+  }
+
+  private async localMaster(): Promise<MasterProductSummary[]> {
+    this.masterCache ??= await this.db.all<MasterProductSummary>("master");
+    return this.masterCache;
+  }
+
+  /** Downloads master-list changes since the stored cursor, so a restart or dropped line resumes where it stopped. */
+  private async syncMaster(): Promise<void> {
+    let cursor = await this.db.get<string>("meta", "masterCursor");
+    const stored = new Map((await this.localMaster()).map((product) => [product.id, product]));
+    for (let page = 0; page < MASTER_PAGES_PER_SYNC; page++) {
+      const result = await this.transport.masterList(cursor);
+      if (result.products.length) {
+        for (const product of result.products) stored.set(product.id, product);
+        // Each page is saved with its cursor and the new count, so a dropped connection loses nothing.
+        await this.db.write([
+          ...result.products.map((product) => ({ collection: "master" as const, id: product.id, value: product })),
+          { collection: "meta" as const, id: "masterCursor", value: result.nextCursor },
+          { collection: "meta" as const, id: "masterCount", value: stored.size }
+        ]);
+        this.masterCache = [...stored.values()];
+      }
+      cursor = result.nextCursor;
+      if (!result.hasMore) break;
+    }
   }
 
   /**
@@ -508,6 +552,7 @@ export class PosEngine {
 
   private async runSync() {
     this.set({ sync: { ...this.state.sync, syncing: true } });
+    let serverTrouble = false;
     try {
       for (;;) {
         const batch = (await this.db.all<QueuedOperation>("outbox")).filter((op) => op.status === "pending").slice(0, SYNC_BATCH);
@@ -518,13 +563,22 @@ export class PosEngine {
         for (const op of batch) {
           const result = byId.get(op.operation.id);
           if (!result) continue;
-          entries.push({ collection: "outbox", id: op.key, value: result.status === "failed"
-            ? { ...op, status: "failed", error: result.error, attempts: op.attempts + 1 }
-            : { ...op, status: "confirmed", confirmedAt: nowIso(), attempts: op.attempts + 1 } });
+          const attempts = op.attempts + 1;
+          if (result.status === "retry") {
+            // The server had a problem; keep it queued, unless it has failed too many times to keep blocking on.
+            serverTrouble = true;
+            entries.push({ collection: "outbox", id: op.key, value: attempts >= MAX_SERVER_RETRIES
+              ? { ...op, status: "failed", attempts, error: { code: "SERVER_KEPT_FAILING", message: `The server could not apply this after ${attempts} tries. Retry it later or contact support` } }
+              : { ...op, attempts, error: result.error } });
+          } else {
+            entries.push({ collection: "outbox", id: op.key, value: result.status === "failed"
+              ? { ...op, status: "failed", error: result.error, attempts }
+              : { ...op, status: "confirmed", confirmedAt: nowIso(), attempts, error: undefined } });
+          }
         }
         await this.db.write(entries);
-        // Stop if the server answered for none of them, rather than resending the same batch forever.
-        if (!batch.some((op) => byId.has(op.operation.id))) break;
+        // Back off rather than hammer a struggling server, and never resend a batch the server ignored.
+        if (serverTrouble || !batch.some((op) => byId.has(op.operation.id))) break;
       }
       const requestedAt = nowIso();
       const snapshot = await this.transport.snapshot();
@@ -536,14 +590,57 @@ export class PosEngine {
         // A customer added on this counter is in the snapshot from now on.
         ...(op.operation.type === "customer.create" ? [{ collection: "customers" as const, id: op.operation.payload.customerId, value: undefined }] : [])
       ]));
-      this.set({ sync: { ...this.state.sync, online: true, error: null } });
+      await this.syncMaster();
+      this.lastRunOk = !serverTrouble;
+      this.set({ sync: { ...this.state.sync, online: true, error: serverTrouble ? "The server is having trouble; uploads will be retried" : null } });
     } catch (error) {
+      this.lastRunOk = false;
       if (error instanceof DeviceRevokedError) this.set({ deviceRevoked: true });
       this.set({ sync: { ...this.state.sync, online: !(error instanceof OfflineError), error: error instanceof OfflineError ? null : error instanceof Error ? error.message : "Sync failed" } });
     } finally {
       await this.reload();
-      this.set({ sync: { ...this.state.sync, syncing: false } });
+      const consecutiveFailures = this.lastRunOk ? 0 : this.state.sync.consecutiveFailures + 1;
+      this.set({ sync: { ...this.state.sync, syncing: false, consecutiveFailures } });
     }
+    // Tell the server how this counter is doing (best effort; never blocks billing).
+    if (this.lastRunOk) await this.transport.reportDiagnostics(this.diagnostics()).catch(() => undefined);
+  }
+
+  /** This counter's sync health, as reported to the owner and support. */
+  diagnostics(): DeviceDiagnostics {
+    const pending = this.state.outbox.filter((op) => op.status === "pending");
+    const lastError = this.state.sync.error ?? this.state.outbox.find((op) => op.error)?.error?.message ?? null;
+    return {
+      appVersion: APP_VERSION,
+      reportedAt: nowIso(),
+      pending: pending.length,
+      failed: this.state.sync.failed,
+      oldestPendingAt: pending[0]?.operation.occurredAt ?? null,
+      lastSyncAt: this.state.sync.lastSyncAt,
+      lastSnapshotAt: this.state.sync.lastSnapshotAt,
+      consecutiveFailures: this.state.sync.consecutiveFailures,
+      lastError,
+      masterProducts: this.state.sync.masterProducts,
+      localSales: this.state.sales.length
+    };
+  }
+
+  /**
+   * A file support can read: health, settings, and every queued operation. Prescription details (patient and
+   * doctor) and PIN data are left out.
+   */
+  exportDiagnostics(): Record<string, unknown> {
+    return {
+      exportedAt: nowIso(),
+      device: this.state.snapshot?.device ?? { id: this.deviceId },
+      health: this.diagnostics(),
+      settings: this.state.settings,
+      shift: this.state.shift ? { id: this.state.shift.id, openedAt: this.state.shift.openedAt, userName: this.state.shift.userName } : null,
+      outbox: this.state.outbox.map((op) => {
+        const { prescription: _prescription, ...payload } = op.operation.payload as Record<string, unknown>;
+        return { key: op.key, id: op.operation.id, type: op.operation.type, occurredAt: op.operation.occurredAt, status: op.status, attempts: op.attempts, error: op.error ?? null, confirmedAt: op.confirmedAt ?? null, payload };
+      })
+    };
   }
 
   /** Sends failed operations again, e.g. after the owner fixed the cause. */
@@ -554,17 +651,33 @@ export class PosEngine {
     await this.syncNow();
   }
 
-  /** Background uploads every `intervalMs`, plus immediately when the network comes back. */
-  start(intervalMs = 20_000): () => void {
-    const kick = () => void this.syncNow();
+  /**
+   * Background sync: every `baseMs` while things work, backing off (up to five minutes, with jitter) while the
+   * server is unreachable, and immediately when the network comes back.
+   */
+  start(baseMs = 20_000): () => void {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let stopped = false;
+    const schedule = (delay: number) => {
+      if (stopped) return;
+      clearTimeout(timer);
+      this.set({ sync: { ...this.state.sync, nextAttemptAt: new Date(Date.now() + delay).toISOString() } });
+      timer = setTimeout(run, delay);
+    };
+    const run = async () => {
+      clearTimeout(timer);
+      await this.syncNow();
+      schedule(this.lastRunOk ? baseMs : nextSyncDelay(this.state.sync.consecutiveFailures, baseMs, Math.random()));
+    };
+    const online = () => void run();
     const offline = () => this.set({ sync: { ...this.state.sync, online: false } });
-    this.timer = setInterval(kick, intervalMs);
-    window.addEventListener("online", kick);
+    window.addEventListener("online", online);
     window.addEventListener("offline", offline);
-    kick();
+    void run();
     return () => {
-      if (this.timer) clearInterval(this.timer);
-      window.removeEventListener("online", kick);
+      stopped = true;
+      clearTimeout(timer);
+      window.removeEventListener("online", online);
       window.removeEventListener("offline", offline);
     };
   }

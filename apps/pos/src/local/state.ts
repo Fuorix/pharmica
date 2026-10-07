@@ -1,4 +1,4 @@
-import type { CatalogueProduct, PosCustomer, PosSnapshot } from "@pharmica/contracts";
+import type { CatalogueProduct, MasterProductSummary, PosCustomer, PosSnapshot } from "@pharmica/contracts";
 import { isSellable, roundMoney, sellingPackPrice, type PricingBatch, type PricingProduct } from "@pharmica/domain";
 import type { QueuedOperation } from "./types";
 
@@ -99,3 +99,24 @@ export function searchCatalogue(catalogue: CatalogueProduct[], query: string, li
     .map((entry) => entry.product);
 }
 
+
+/** Searches the master list stored on the counter the same way as the catalogue: barcode first, then names. */
+export function searchMasterList(master: MasterProductSummary[], query: string, limit = 20): MasterProductSummary[] {
+  const text = query.trim().toLowerCase();
+  if (text.length < 2) return [];
+  const score = (product: MasterProductSummary) => {
+    if (product.barcode === query.trim()) return 0;
+    const name = product.name.toLowerCase();
+    if (name.startsWith(text)) return 1;
+    if (name.includes(text) || product.brand?.toLowerCase().includes(text)) return 2;
+    if (product.generic?.toLowerCase().includes(text)) return 3;
+    if (product.company?.toLowerCase().includes(text)) return 4;
+    return null;
+  };
+  return master
+    .map((product) => ({ product, rank: score(product) }))
+    .filter((entry): entry is { product: MasterProductSummary; rank: number } => entry.rank !== null)
+    .sort((a, b) => a.rank - b.rank || a.product.name.localeCompare(b.product.name))
+    .slice(0, limit)
+    .map((entry) => entry.product);
+}
