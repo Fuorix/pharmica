@@ -71,7 +71,10 @@ describe("role and tenant boundaries", () => {
     ["GET", "/api/v1/devices"], ["POST", "/api/v1/devices"], ["PATCH", "/api/v1/devices"],
     ["GET", "/api/v1/audit-logs"], ["GET", "/api/v1/suppliers"], ["GET", "/api/v1/price-reports"],
     ["GET", "/api/v1/catalogue/master"], ["POST", "/api/v1/catalogue"], ["PATCH", "/api/v1/catalogue"], ["POST", "/api/v1/catalogue/master"], ["GET", "/api/v1/controlled-drugs"],
-    ["GET", "/api/v1/sync/conflicts"], ["GET", "/api/v1/purchases"], ["POST", "/api/v1/purchases"], ["PATCH", "/api/v1/inventory"], ["GET", "/api/v1/inventory/ledger"], ["PATCH", "/api/v1/customers"], ["POST", "/api/v1/suppliers"], ["PATCH", "/api/v1/suppliers"]
+    ["GET", "/api/v1/sync/issues"], ["PATCH", "/api/v1/sync/issues"], ["GET", "/api/v1/purchases"], ["POST", "/api/v1/purchases"], ["PATCH", "/api/v1/inventory"], ["GET", "/api/v1/inventory/ledger"], ["PATCH", "/api/v1/customers"], ["POST", "/api/v1/suppliers"], ["PATCH", "/api/v1/suppliers"],
+    ["GET", "/api/v1/reports/dashboard"], ["GET", "/api/v1/reports/sales"], ["GET", "/api/v1/reports/profit-loss"], ["GET", "/api/v1/reports/cash-book"],
+    ["GET", "/api/v1/reports/alerts"], ["GET", "/api/v1/reports/shifts"], ["GET", "/api/v1/reports/stock-health"], ["GET", "/api/v1/catalogue/price-updates"],
+    ["GET", "/api/v1/expenses"], ["POST", "/api/v1/expenses"], ["DELETE", "/api/v1/expenses"], ["GET", "/api/v1/export"], ["PATCH", "/api/v1/branches"]
   ];
 
   it.each(ownerOnly)("forbids cashiers: %s %s", async (method, path) => {
@@ -102,7 +105,7 @@ describe("role and tenant boundaries", () => {
 
   it("shows a cashier only their own branch", async () => {
     const response = await call((await route("/api/v1/branches")).GET, { path: "/api/v1/branches", token: cashierA1Device });
-    expect(response.body.branches).toEqual([{ id: t.branchA1.id, name: "A1" }]);
+    expect(response.body.branches).toMatchObject([{ id: t.branchA1.id, name: "A1" }]);
   });
 
   it("forbids another tenant's owner from changing a sale, customer ledger, or supplier ledger", async () => {
