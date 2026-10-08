@@ -8,7 +8,7 @@ type Fixture = { receive: { barcode: string; unitsPerPack: number; tabletsPerStr
 const fixture = () => JSON.parse(readFileSync(new URL("./.tenant.json", import.meta.url), "utf8")) as Fixture;
 const notice = (page: Page) => page.getByRole("status");
 
-test("a counter receives a new medicine from its 2D code, sells it offline, writes off damage, and the server agrees", async ({ page, request }) => {
+test("a counter receives a never-stocked medicine from its 2D code with no internet, sells it, writes off damage, and the server agrees", async ({ page, request }) => {
   const { receive } = fixture();
   const perPack = receive.unitsPerPack * receive.tabletsPerStrip;
 
@@ -23,7 +23,13 @@ test("a counter receives a new medicine from its 2D code, sells it offline, writ
   await page.keyboard.press("Enter");
   await expect(notice(page)).toContainText("Shift opened");
 
-  // Receive: scan the pack's GS1 DataMatrix. Product, batch, expiry, and serial come from the code.
+  // The counter keeps the master medicine list, so a first-time medicine can be received with no internet.
+  await page.locator(".sync-pill").click();
+  await expect(page.getByText(/[1-9][d,]* medicines from the master list stored on this counter/)).toBeVisible({ timeout: 30_000 });
+  await page.keyboard.press("Escape");
+  await page.route(`${API}/**`, (route) => route.abort("internetdisconnected"));
+
+  // Receive offline: scan the pack's GS1 DataMatrix. Product, batch, expiry, and serial come from the code.
   await page.keyboard.press("Control+2");
   await page.getByLabel("Supplier").fill("E2E Distributor");
   await page.getByLabel("Invoice no.").fill("INV-9");
@@ -42,8 +48,7 @@ test("a counter receives a new medicine from its 2D code, sells it offline, writ
   await page.keyboard.press("Control+Enter");
   await expect(notice(page)).toContainText("Received 3 packs from E2E Distributor");
 
-  // The internet drops; the received batch sells straight away.
-  await page.route(`${API}/**`, (route) => route.abort("internetdisconnected"));
+  // Still offline, the received batch sells straight away.
   await page.keyboard.press("Control+1");
   await page.keyboard.type("brufen");
   await expect(page.locator(".results")).toContainText("3 packs");

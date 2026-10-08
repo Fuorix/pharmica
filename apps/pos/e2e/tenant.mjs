@@ -39,6 +39,7 @@ async function cleanup() {
   await db.session.deleteMany({ where: { user: { organisationId: ORG } } });
   await db.auditLog.deleteMany({ where: { OR: [{ organisationId: ORG }, { branchId: BRANCH }, { entityId: { startsWith: "login:e2e-pos" } }] } });
   await db.device.deleteMany({ where });
+  await db.expense.deleteMany({ where });
   await db.user.deleteMany({ where: { organisationId: ORG } });
   await db.branch.deleteMany({ where: { organisationId: ORG } });
   await db.organisation.deleteMany({ where: { id: ORG } });

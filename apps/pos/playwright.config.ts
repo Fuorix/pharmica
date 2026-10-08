@@ -14,6 +14,7 @@ export default defineConfig({
   use: { baseURL: "http://localhost:3002", channel: "msedge", trace: "retain-on-failure" },
   webServer: [
     { command: "pnpm --filter @pharmica/api dev", url: "http://localhost:4000/api/v1/health", reuseExistingServer: true, timeout: 180_000, cwd: "../.." },
-    { command: "pnpm --filter @pharmica/pos dev", url: "http://localhost:3002", reuseExistingServer: true, timeout: 120_000, cwd: "../.." }
+    { command: "pnpm --filter @pharmica/pos dev", url: "http://localhost:3002", reuseExistingServer: true, timeout: 120_000, cwd: "../.." },
+    { command: "pnpm --filter @pharmica/owner-web dev", url: "http://localhost:3000", reuseExistingServer: true, timeout: 120_000, cwd: "../..", env: { VITE_API_URL: "http://localhost:4000" } }
   ]
 });
