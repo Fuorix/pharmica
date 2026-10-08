@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import type { CatalogueProduct, CatalogueSearchResponse, MasterPriceEntry, MasterProductSummary, ProductCategory } from "@pharmica/contracts";
+import { PriceUpdatesPanel } from "./PriceUpdatesPanel";
 import { apiFetch, errorMessage, jsonBody } from "./session";
 
 const money = (value: number | null) => value == null ? "—" : `PKR ${value.toFixed(2)}`;
@@ -66,6 +67,7 @@ export function CataloguePage({ branchId }: { branchId: string }) {
 
   return <>
     <div className="page-heading"><h1>Catalogue</h1><span className="page-note">{message}</span></div>
+    <PriceUpdatesPanel branchId={branchId} onChanged={() => void load()} />
     <input className="catalogue-search" placeholder="Search by brand, salt, company, or barcode" value={query} onChange={(event) => setQuery(event.target.value)} />
     <article className="panel catalogue-table">
       <div className="panel-heading"><h2>In this branch</h2><span>{products.length} items</span></div>
