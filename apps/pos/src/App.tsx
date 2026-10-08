@@ -60,7 +60,8 @@ export function App() {
   const selected = items.find((item) => item.key === selectedKey) ?? items[items.length - 1];
 
   const say = (tone: "ok" | "error" | "info", text: string) => setNotice({ tone, text });
-  const focusSearch = () => window.setTimeout(() => searchRef.current?.focus(), 0);
+  // Deferred so it runs after React renders; it never pulls focus out of a dialog opened in the meantime (F10 straight after a scan).
+  const focusSearch = () => window.setTimeout(() => { if (!document.activeElement?.closest("[role=dialog]")) searchRef.current?.focus(); }, 0);
   const closeDialog = useCallback(() => { setDialog(null); focusSearch(); }, []);
   const print = (job: PrintJob) => setPrintJob({ job, at: Date.now() });
 
@@ -204,7 +205,8 @@ export function App() {
     if (key === "Escape") return shortcut(() => { setQuery(""); setNotice(null); });
   }
 
-  const header = { organisationName: state.snapshot?.organisationName ?? "Pharmacy", branchName: device.branchName, deviceName: device.name };
+  const receipt = state.snapshot?.receipt;
+  const header = { organisationName: state.snapshot?.organisationName ?? "Pharmacy", branchName: device.branchName, deviceName: device.name, receiptHeader: receipt?.header, receiptFooter: receipt?.footer, address: receipt?.address, phone: receipt?.phone };
   const status = state.sync;
 
   return <main className="pos-shell">
@@ -347,7 +349,16 @@ export function App() {
         say("ok", "Shift closed. End-of-day report printed.");
       }} />}
     {dialog?.kind === "sync" && <SyncDialog status={status} outbox={state.outbox} paperWidth={state.settings.paperWidth} onPaperWidth={(width) => void engine.saveSettings({ ...state.settings, paperWidth: width })}
-      onRetry={() => void engine.retryFailed()} onSyncNow={() => void engine.syncNow()} onClose={closeDialog} />}
+      onRetry={() => void engine.retryFailed()} onSyncNow={() => void engine.syncNow()} onClose={closeDialog}
+      onExport={() => {
+        // A JSON file support can read; prescription details and PINs are left out.
+        const blob = new Blob([JSON.stringify(engine.exportDiagnostics(), null, 2)], { type: "application/json" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `pharmica-diagnostics-${device.name.replace(/\W+/g, "-")}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.json`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+      }} />}
 
     <div className="print-area" aria-hidden="true"><Printable job={printJob?.job ?? null} header={header} /></div>
   </main>;

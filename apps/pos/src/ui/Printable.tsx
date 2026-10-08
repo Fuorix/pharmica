@@ -8,7 +8,9 @@ export type PrintJob =
   | { kind: "shift"; shift: LocalShift; report: ShiftReport }
   | { kind: "payment"; payment: LocalPayment };
 
-type Header = { organisationName: string; branchName: string; deviceName: string };
+type Header = { organisationName: string; branchName: string; deviceName: string; receiptHeader?: string; receiptFooter?: string; address?: string | null; phone?: string | null };
+
+const DEFAULT_FOOTER = "Medicines are returned only with this receipt.";
 
 /** Sends a job to the thermal printer through the system print dialog, sized for 58mm or 80mm paper. */
 export function printNow(paperWidth: 58 | 80) {
@@ -28,6 +30,9 @@ function Top({ header, title }: { header: Header; title: string }) {
   return <div className="print-top">
     <strong>{header.organisationName}</strong>
     <span>{header.branchName}</span>
+    {header.address && <span>{header.address}</span>}
+    {header.phone && <span>Tel {header.phone}</span>}
+    {header.receiptHeader && <span>{header.receiptHeader}</span>}
     <span>{title}</span>
   </div>;
 }
@@ -98,6 +103,6 @@ export function Printable({ job, header }: { job: PrintJob | null; header: Heade
         {sale.change ? <tr><td>Change</td><td>{plainMoney(sale.change)}</td></tr> : null}
       </>}
     </tbody></table>
-    <p className="print-foot">Medicines once sold are returned only with this receipt.<br />Thank you · {header.deviceName}</p>
+    <p className="print-foot">{header.receiptFooter || DEFAULT_FOOTER}<br />Thank you · {header.deviceName}</p>
   </div>;
 }

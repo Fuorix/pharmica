@@ -182,14 +182,16 @@ export function SubstitutesDialog({ product, substitutes, onClose, onPick }: { p
   </Dialog>;
 }
 
-export function SyncDialog({ status, outbox, paperWidth, onPaperWidth, onRetry, onSyncNow, onClose }: {
-  status: SyncStatus; outbox: QueuedOperation[]; paperWidth: 58 | 80; onPaperWidth: (width: 58 | 80) => void; onRetry: () => void; onSyncNow: () => void; onClose: () => void;
+export function SyncDialog({ status, outbox, paperWidth, onPaperWidth, onRetry, onSyncNow, onExport, onClose }: {
+  status: SyncStatus; outbox: QueuedOperation[]; paperWidth: 58 | 80; onPaperWidth: (width: 58 | 80) => void; onRetry: () => void; onSyncNow: () => void; onExport: () => void; onClose: () => void;
 }) {
   const failed = outbox.filter((op) => op.status === "failed");
   return <Dialog title="Sync and settings" onClose={onClose} wide>
     <div className="stack">
       <p>{status.online ? "Connected to Pharmica." : "Offline. Billing continues; changes upload when the connection returns."}</p>
       <p className="muted">{status.pending} waiting to upload · {status.failed} rejected · last upload {status.lastSyncAt ? dateTime(status.lastSyncAt) : "never"} · catalogue from {status.lastSnapshotAt ? dateTime(status.lastSnapshotAt) : "never"}</p>
+      {status.consecutiveFailures > 0 && <p className="muted">{status.consecutiveFailures} sync attempt{status.consecutiveFailures === 1 ? "" : "s"} failed in a row; next try {status.nextAttemptAt ? new Date(status.nextAttemptAt).toLocaleTimeString("en-PK", { timeStyle: "short" }) : "soon"}. Waiting longer between tries while the connection is down.</p>}
+      <p className="muted">{status.masterProducts.toLocaleString()} medicines from the master list stored on this counter for receiving offline.</p>
       {status.error && <p className="warning-text">{status.error}</p>}
       {failed.length > 0 && <div className="pick-list">{failed.map((op) => <div key={op.key} className="failed-op">
         <strong>{op.operation.type}</strong><span>{dateTime(op.operation.occurredAt)}</span><span className="warning-text">{op.error?.message ?? "Rejected"}</span>
@@ -197,6 +199,7 @@ export function SyncDialog({ status, outbox, paperWidth, onPaperWidth, onRetry, 
       <div className="row">
         <button className="primary" disabled={status.syncing} onClick={onSyncNow}>{status.syncing ? "Syncing..." : "Sync now"}</button>
         {failed.length > 0 && <button onClick={onRetry}>Retry rejected</button>}
+        <button onClick={onExport}>Export diagnostics for support</button>
       </div>
       <label>Receipt paper<select value={paperWidth} onChange={(event) => onPaperWidth(Number(event.target.value) as 58 | 80)}><option value={80}>80 mm</option><option value={58}>58 mm</option></select></label>
     </div>
