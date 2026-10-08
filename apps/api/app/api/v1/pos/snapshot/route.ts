@@ -6,6 +6,7 @@ import { toRoleName } from "../../../../../src/auth/session";
 import { catalogueInclude, toCatalogueProduct } from "../../../../../src/catalogue/catalogue";
 import { apiError } from "../../../../../src/lib/api-response";
 import { corsOptions, withCors } from "../../../../../src/lib/cors";
+import { branchSettings } from "../../../../../src/reports/reports";
 
 export function OPTIONS(request: Request): Response { return corsOptions(request); }
 
@@ -29,10 +30,12 @@ export async function GET(request: Request): Promise<Response> {
   ]);
   await db.device.update({ where: { id: device.id }, data: { lastSeenAt: now } });
 
+  const settings = branchSettings(device.branch.settings);
   const snapshot: PosSnapshot = {
     generatedAt: now.toISOString(),
     device: { id: device.id, name: device.name, branchId, branchName: device.branch.name },
     organisationName: organisation.name,
+    receipt: { header: settings.receiptHeader, footer: settings.receiptFooter, address: device.branch.address, phone: device.branch.phone },
     staff: staff.map((member) => ({ id: member.id, name: member.name, role: toRoleName(member.role), maxDiscountPercent: member.role === "OWNER" ? null : member.maxDiscountPercent })),
     products: products.map((product) => toCatalogueProduct(product, now)),
     batches: products.flatMap((product) => product.batches.map((batch) => ({
