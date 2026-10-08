@@ -47,3 +47,50 @@
 }
 
 .inventory-form label.check { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #5f6a62; }
+
+.sync-issues { margin-top: 24px; }
+.staff-row.issue .issue-detail { color: #8a5a1c; }
+.staff-row.issue.rejected .issue-detail { color: #b2512f; font-weight: 600; }
+.panel-heading .row-actions select { padding: 6px; border: 1px solid #d8d2c4; border-radius: 6px; }
+.panel-heading label.check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #5f6a62; }
+
+.metrics small { display: block; color: #6c7168; font-size: 12px; margin-top: 6px; }
+.banner { background: #fbf1df; color: #8a5a1c; border: 1px solid #ecd9b4; padding: 12px 16px; border-radius: 6px; margin-bottom: 18px; font-size: 14px; }
+.report-note { margin: -6px 0 18px; }
+.report-covers { color: #5f6a62; font-size: 14px; margin: 4px 0 16px; }
+.report-covers strong { color: #17211b; }
+.period-picker input { font: inherit; }
+.inline-label { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #5f6a62; }
+.inline-label select { padding: 6px; border: 1px solid #d8d2c4; border-radius: 6px; }
+.report-table td small { color: #5f6a62; }
+.detail-table tr.total td { font-weight: 700; border-top: 2px solid #17211b; }
+.detail-table tr.subtotal td { font-weight: 700; }
+.detail-table tr.total.warning td, .detail-table td.warning { color: #b2512f; }
+.pnl { max-width: 640px; margin-bottom: 24px; }
+.pnl td:last-child { text-align: right; white-space: nowrap; }
+.dashboard-grid { margin-bottom: 18px; }
+.dashboard-branches { margin-bottom: 18px; overflow-x: auto; }
+.bars { display: flex; flex-direction: column; gap: 8px; }
+.bar-row { display: grid; grid-template-columns: 90px 1fr 120px; gap: 10px; align-items: center; font-size: 13px; }
+.bar-row span:last-child { text-align: right; }
+.bar { position: relative; height: 18px; background: #f1ede3; border-radius: 3px; overflow: hidden; }
+.bar i, .bar b { position: absolute; left: 0; top: 0; bottom: 0; }
+.bar i { background: #b9d1c2; }
+.bar b { background: #1c563f; top: 6px; bottom: 6px; }
+.alert-list { display: flex; flex-direction: column; }
+.alert-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-top: 1px solid #e4dfd3; font-size: 14px; }
+.alert-row strong, .alert-row span { display: block; }
+.alert-row span { color: #5f6a62; font-size: 12px; margin-top: 3px; font-weight: 400; }
+.alert-row em { font-style: normal; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; flex-shrink: 0; min-width: 72px; text-align: center; }
+.alert-row.high em { background: #f8e4dc; color: #b2512f; }
+.alert-row.medium em { background: #fbf1df; color: #8a5a1c; }
+.alert-row.low em { background: #eef3ea; color: #1c563f; }
+.settings-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.settings-form label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #5f6a62; }
+.settings-form input { padding: 10px; border: 1px solid #d8d2c4; border-radius: 6px; font-size: 14px; }
+.settings-export { margin-top: 18px; }
+.settings-export select { padding: 10px; border: 1px solid #d8d2c4; border-radius: 6px; }
+.price-updates { margin-bottom: 18px; overflow-x: auto; }
+.price-updates td small { display: block; color: #5f6a62; }
+.tabs { flex-wrap: wrap; }
+@media (max-width: 700px) { .settings-form { grid-template-columns: 1fr; } .bar-row { grid-template-columns: 70px 1fr 90px; } }
