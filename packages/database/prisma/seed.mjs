@@ -24,6 +24,13 @@ const organisation = await db.organisation.upsert({
   create: { id: "demo-organisation", name: "Demo Pharmacy" }
 });
 
+// The demo pharmacy runs on a Pro trial; the plans themselves come from the tenants_billing migration.
+const existingSubscription = await db.subscription.findUnique({ where: { organisationId: organisation.id } });
+if (!existingSubscription) {
+  const subscription = await db.subscription.create({ data: { organisationId: organisation.id, planId: "plan_pro", status: "TRIAL", isTrial: true, paidThrough: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) } });
+  await db.subscriptionEvent.create({ data: { subscriptionId: subscription.id, type: "created", toStatus: "TRIAL", reason: "Demo pharmacy" } });
+}
+
 const branch = await db.branch.upsert({
   where: { id: "demo-branch" },
   update: {},
