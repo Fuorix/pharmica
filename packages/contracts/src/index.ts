@@ -9,6 +9,8 @@ export interface AuthUser {
   branchId: string | null;
   /** Set when the session was opened by PIN on a POS device. */
   deviceId: string | null;
+  /** The account was created with a temporary password that must be replaced before anything else. */
+  mustChangeCredential?: boolean;
 }
 
 export interface LoginRequest {
@@ -101,6 +103,8 @@ export interface MasterProductSummary {
   officialRetailPrice: number | null;
   isPrescriptionOnly: boolean;
   isControlled: boolean;
+  /** Set on a duplicate merged into another entry; counters drop it from their stored list. */
+  mergedIntoId?: string;
 }
 
 export interface CatalogueSearchResponse {
@@ -301,6 +305,8 @@ export interface PosSnapshot {
   suppliers: Array<{ id: string; name: string }>;
   /** What the owner set for printed receipts at this branch. Older snapshots may not have it. */
   receipt?: PosReceiptSettings;
+  /** For renewal reminders on the counter. */
+  subscription?: { status: SubscriptionStatus; paidThrough: string; daysLeft: number; renewalDue: boolean };
 }
 
 export interface PosReceiptSettings {
@@ -656,4 +662,297 @@ export interface ExpenseItem {
   note: string | null;
   spentAt: string;
   recordedBy: string;
+}
+
+// ---------- subscriptions (M9) ----------
+
+export type SubscriptionStatus = "TRIAL" | "ACTIVE" | "GRACE" | "EXPIRED" | "CANCELLED";
+export type BillingPeriod = "MONTHLY" | "QUARTERLY" | "YEARLY";
+export type SubscriptionPaymentMethod = "CASH" | "BANK_TRANSFER" | "JAZZCASH" | "EASYPAISA" | "RAAST";
+export type PlanFeature = "reports" | "accounting" | "mobile";
+
+export interface PlanSummary {
+  id: string;
+  code: string;
+  name: string;
+  monthlyPrice: number;
+  quarterlyDiscountPercent: number;
+  yearlyDiscountPercent: number;
+  maxBranches: number | null;
+  maxDevices: number | null;
+  features: string[];
+  trialDays: number;
+  isActive: boolean;
+}
+
+export interface SubscriptionAccessFlags {
+  billing: true;
+  export: true;
+  payments: true;
+  sync: boolean;
+  reports: boolean;
+  mobile: boolean;
+  manage: boolean;
+}
+
+export interface SubscriptionSummary {
+  status: SubscriptionStatus;
+  isTrial: boolean;
+  plan: PlanSummary;
+  period: BillingPeriod;
+  paidThrough: string;
+  /** When grace mode ends if nothing is paid. */
+  graceEndsAt: string;
+  /** Whole days until the paid-through date (negative once it has passed). */
+  daysLeft: number;
+  renewalDue: boolean;
+  access: SubscriptionAccessFlags;
+  /** Features of the plan the shop is on. */
+  features: string[];
+}
+
+export interface InvoiceSummary {
+  id: string;
+  number: string;
+  organisationId: string;
+  organisationName?: string;
+  planName: string;
+  period: BillingPeriod;
+  periodStart: string;
+  periodEnd: string;
+  subtotal: number;
+  discount: number;
+  total: number;
+  /** Total less successful payments. */
+  balance: number;
+  status: "OPEN" | "PAID" | "VOID";
+  issuedAt: string;
+  dueAt: string;
+  paidAt: string | null;
+}
+
+export interface PaymentSummary {
+  id: string;
+  organisationId: string | null;
+  organisationName?: string | null;
+  invoiceId: string | null;
+  invoiceNumber: string | null;
+  method: SubscriptionPaymentMethod;
+  status: "SUCCEEDED" | "FAILED" | "UNMATCHED";
+  amount: number;
+  reference: string | null;
+  providerTransactionId: string | null;
+  note: string | null;
+  receivedAt: string;
+  recordedBy: string | null;
+}
+
+export interface BillingOverview {
+  subscription: SubscriptionSummary;
+  invoices: InvoiceSummary[];
+  payments: PaymentSummary[];
+  plans: PlanSummary[];
+  /** Online methods the server has credentials for; empty until payment providers are configured. */
+  onlineMethods: SubscriptionPaymentMethod[];
+  /** How to pay by cash or bank transfer. */
+  payInstructions: string;
+}
+
+export interface SubscriptionEventItem {
+  id: string;
+  type: string;
+  fromStatus: SubscriptionStatus | null;
+  toStatus: SubscriptionStatus | null;
+  reason: string | null;
+  actor: string | null;
+  createdAt: string;
+}
+
+// ---------- super-admin (M8) ----------
+
+export type MigrationStatus = "NOT_STARTED" | "IN_PROGRESS" | "DONE" | "NOT_NEEDED";
+
+export interface TenantListItem {
+  id: string;
+  name: string;
+  city: string | null;
+  phone: string | null;
+  isActive: boolean;
+  createdAt: string;
+  branches: number;
+  devices: number;
+  activeDevices: number;
+  status: SubscriptionStatus | null;
+  planName: string | null;
+  paidThrough: string | null;
+  openBalance: number;
+  lastSeenAt: string | null;
+  onboardingDone: number;
+  onboardingTotal: number;
+}
+
+export interface OnboardingStep {
+  key: string;
+  label: string;
+  done: boolean;
+  detail?: string;
+}
+
+export interface TenantDetail {
+  id: string;
+  name: string;
+  contactName: string | null;
+  phone: string | null;
+  city: string | null;
+  isActive: boolean;
+  createdAt: string;
+  migrationStatus: MigrationStatus;
+  migrationNote: string | null;
+  branches: Array<{ id: string; name: string; address: string | null; phone: string | null }>;
+  users: Array<{ id: string; name: string; login: string; role: UserRole; branchId: string | null; isActive: boolean; hasPin: boolean; mustChangeCredential: boolean; lastLoginAt: string | null }>;
+  devices: Array<{ id: string; name: string; branchId: string; activationCode: string | null; activatedAt: string | null; isActive: boolean; lastSeenAt: string | null }>;
+  subscription: SubscriptionSummary | null;
+  invoices: InvoiceSummary[];
+  payments: PaymentSummary[];
+  events: SubscriptionEventItem[];
+  checklist: OnboardingStep[];
+}
+
+export interface CreateTenantRequest {
+  pharmacyName: string;
+  contactName: string;
+  phone?: string;
+  city?: string;
+  branchName: string;
+  branchAddress?: string;
+  ownerName: string;
+  ownerLogin: string;
+  planCode: string;
+  period?: BillingPeriod;
+  /** Defaults to the plan trial length; 0 starts unpaid with an invoice due now. */
+  trialDays?: number;
+  counters?: number;
+}
+
+export interface CreateTenantResponse {
+  tenant: TenantDetail;
+  /** Shown once, to hand to the owner; they must change it at first sign-in. */
+  temporaryPassword: string;
+}
+
+export interface SupportDevice {
+  id: string;
+  name: string;
+  branchName: string;
+  isActive: boolean;
+  activated: boolean;
+  lastSeenAt: string | null;
+  diagnostics: DeviceDiagnostics | null;
+  diagnosticsAt: string | null;
+  operations: { pending: number; applied: number; failed: number; conflicts: number; flaggedUnreviewed: number };
+}
+
+export interface SupportOperation {
+  id: string;
+  deviceName: string;
+  type: string;
+  status: string;
+  flags: string[];
+  error: string | null;
+  retryCount: number;
+  occurredAt: string | null;
+  processedAt: string | null;
+}
+
+export interface SupportAuditEntry {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  userName: string | null;
+  branchName: string | null;
+  metadata: unknown;
+  createdAt: string;
+}
+
+export interface SupportView {
+  devices: SupportDevice[];
+  problems: SupportOperation[];
+  audit: SupportAuditEntry[];
+  /** Cursor for the next audit page, or null at the end. */
+  nextAuditCursor: string | null;
+  counts: { products: number; batches: number; sales: number; customers: number; openIssues: number };
+}
+
+export interface CollectionsDashboard {
+  generatedAt: string;
+  /** Monthly recurring revenue of paying subscriptions (not trials), normalised to one month. */
+  mrr: number;
+  collectedThisMonth: number;
+  collectedLastMonth: number;
+  outstanding: number;
+  counts: Record<SubscriptionStatus, number>;
+  /** Shops that stopped (expired or cancelled) in the last 30 days, as a percent of those that could have. */
+  churn30Days: { lost: number; base: number; percent: number | null };
+  overdue: Array<{ organisationId: string; name: string; phone: string | null; status: SubscriptionStatus; paidThrough: string; balance: number; oldestDueAt: string | null; daysOverdue: number }>;
+  dueSoon: Array<{ organisationId: string; name: string; status: SubscriptionStatus; paidThrough: string; daysLeft: number }>;
+  recentPayments: PaymentSummary[];
+  unmatchedPayments: PaymentSummary[];
+}
+
+export interface ShopPriceReportGroup {
+  /** masterProductId:newPrice */
+  key: string;
+  masterProductId: string;
+  name: string;
+  company: string | null;
+  officialPrice: number | null;
+  reportedPrice: number;
+  shops: number;
+  reports: number;
+  firstReportedAt: string;
+  lastReportedAt: string;
+  examples: Array<{ branchName: string; organisationName: string; batchNo: string | null; supplier: string | null; invoiceNumber: string | null }>;
+}
+
+export interface PriceListUploadSummary {
+  id: string;
+  source: string;
+  reference: string;
+  fileName: string | null;
+  effectiveFrom: string;
+  status: "REVIEW" | "PUBLISHED" | "REJECTED";
+  uploadedBy: string;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  counts: { rows: number; matched: number; unchanged: number; notFound: number; ambiguous: number; invalid: number; approved: number };
+}
+
+export interface PriceListRowItem {
+  id: string;
+  line: number;
+  name: string;
+  barcode: string | null;
+  registrationNo: string | null;
+  price: number | null;
+  masterProductId: string | null;
+  masterName: string | null;
+  currentPrice: number | null;
+  match: "MATCHED" | "UNCHANGED" | "NOT_FOUND" | "AMBIGUOUS" | "INVALID";
+  approved: boolean;
+  problem: string | null;
+}
+
+export interface DuplicateCandidate {
+  reason: string;
+  products: Array<{ id: string; name: string; generic: string | null; company: string | null; strength: string | null; barcode: string | null; drapRegistrationNo: string | null; unitsPerPack: number; tabletsPerStrip: number; officialRetailPrice: number | null; shops: number }>;
+}
+
+export interface AdminOverview {
+  tenants: { total: number; active: number; suspended: number; newThisMonth: number };
+  subscriptions: Record<SubscriptionStatus, number>;
+  mrr: number;
+  collectedThisMonth: number;
+  queue: { priceReports: number; priceLists: number; unmatchedPayments: number; overdueShops: number; syncProblems: number; onboarding: number };
 }
