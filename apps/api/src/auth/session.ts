@@ -29,6 +29,7 @@ export function toAuthUser(user: {
   role: keyof typeof roleNames;
   organisationId: string | null;
   branchId: string | null;
+  mustChangeCredential?: boolean;
 }, deviceId: string | null = null): AuthUser {
   return {
     id: user.id,
@@ -37,7 +38,8 @@ export function toAuthUser(user: {
     role: roleNames[user.role],
     organisationId: user.organisationId,
     branchId: user.branchId,
-    deviceId
+    deviceId,
+    ...(user.mustChangeCredential ? { mustChangeCredential: true } : {})
   };
 }
 
@@ -62,12 +64,14 @@ export async function getSession(token: string | undefined): Promise<{ user: Aut
 
   const session = await db.session.findUnique({
     where: { tokenHash: hashToken(token) },
-    include: { user: true, device: true }
+    include: { user: { include: { organisation: { select: { isActive: true } } } }, device: true }
   });
 
   const now = Date.now();
   if (!session || session.revokedAt || session.expiresAt.getTime() <= now || !session.user.isActive) return null;
   if (session.deviceId && !session.device?.isActive) return null;
+  // Pharmica staff can suspend a whole pharmacy; its staff are signed out everywhere.
+  if (session.user.organisation && !session.user.organisation.isActive) return null;
 
   const lifetime = session.deviceId ? DEVICE_SESSION_MS : WEB_SESSION_MS;
   let expiresAt = session.expiresAt;

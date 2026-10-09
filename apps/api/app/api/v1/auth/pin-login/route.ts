@@ -15,6 +15,7 @@ export async function POST(request: Request): Promise<Response> {
 
   const device = await authenticateDevice(request);
   if (!device) return withCors(apiError(401, "DEVICE_NOT_ACTIVATED", "This POS device is not activated or has been deactivated"), request);
+  if (!device.branch.organisation.isActive) return withCors(apiError(403, "ORGANISATION_SUSPENDED", "This pharmacy is suspended. Contact Pharmica support."), request);
 
   const lockKey = `pin:${body.userId}`;
   if (await isLockedOut(lockKey)) return withCors(apiError(429, "LOGIN_LOCKED", "Too many failed attempts. Try again in 15 minutes"), request);

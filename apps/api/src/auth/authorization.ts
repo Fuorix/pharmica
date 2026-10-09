@@ -15,10 +15,14 @@ export function getSessionToken(request: Request): string | undefined {
 export async function requireAuth(
   request: Request,
   roles?: UserRole[],
-  options: { device?: boolean } = {}
+  options: { device?: boolean; allowCredentialChange?: boolean } = {}
 ): Promise<{ user: AuthUser } | { response: Response }> {
   const user = await getSessionUser(getSessionToken(request));
   if (!user) return { response: apiError(401, "UNAUTHENTICATED", "A valid session is required") };
+  // An account opened with a temporary password can do nothing else until the password is changed.
+  if (user.mustChangeCredential && !options.allowCredentialChange) {
+    return { response: apiError(403, "CREDENTIAL_CHANGE_REQUIRED", "Choose a new password before continuing") };
+  }
   if (roles && !roles.includes(user.role)) {
     return { response: apiError(403, "FORBIDDEN", "You do not have permission for this action") };
   }
@@ -56,7 +60,7 @@ export function newDeviceSecret(): { secret: string; secretHash: string } {
 export async function authenticateDevice(request: Request) {
   const [deviceId, secret] = request.headers.get(DEVICE_TOKEN_HEADER)?.split(".") ?? [];
   if (!deviceId || !secret) return null;
-  const device = await db.device.findUnique({ where: { id: deviceId }, include: { branch: true } });
+  const device = await db.device.findUnique({ where: { id: deviceId }, include: { branch: { include: { organisation: { select: { id: true, name: true, isActive: true } } } } } });
   if (!device?.isActive || !device.secretHash) return null;
   const expected = Buffer.from(device.secretHash, "hex");
   const actual = Buffer.from(hashToken(secret), "hex");

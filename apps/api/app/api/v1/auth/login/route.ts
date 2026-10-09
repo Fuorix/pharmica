@@ -38,6 +38,10 @@ export async function POST(request: Request): Promise<Response> {
       return withCors(apiError(401, "AUTHENTICATION_FAILED", "Invalid login or credential"), request);
     }
 
+    if (user.organisationId && !(await db.organisation.findUnique({ where: { id: user.organisationId }, select: { isActive: true } }))?.isActive) {
+      return withCors(apiError(403, "ORGANISATION_SUSPENDED", "This pharmacy is suspended. Contact Pharmica support."), request);
+    }
+
     const session = await createSession(user.id);
     await recordAudit({ organisationId: user.organisationId ?? undefined, branchId: user.branchId ?? undefined, userId: user.id, action: "auth.login", entityType: "user", entityId: user.id, metadata: { method: "password" } });
     const responseBody: AuthResponse = { user: toAuthUser(user), expiresAt: session.expiresAt.toISOString() };
