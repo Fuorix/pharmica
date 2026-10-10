@@ -6,6 +6,7 @@ import { toRoleName } from "../../../../../src/auth/session";
 import { catalogueInclude, toCatalogueProduct } from "../../../../../src/catalogue/catalogue";
 import { apiError } from "../../../../../src/lib/api-response";
 import { corsOptions, withCors } from "../../../../../src/lib/cors";
+import { requireCloudSync, summarize } from "../../../../../src/billing/subscriptions";
 import { branchSettings } from "../../../../../src/reports/reports";
 
 export function OPTIONS(request: Request): Response { return corsOptions(request); }
@@ -14,10 +15,13 @@ export function OPTIONS(request: Request): Response { return corsOptions(request
 export async function GET(request: Request): Promise<Response> {
   const device = await authenticateDevice(request);
   if (!device) return withCors(apiError(401, "DEVICE_NOT_ACTIVATED", "This POS device is not activated or has been deactivated"), request);
+  // Billing never stops on the counter; only cloud sync pauses, and queued work waits for it.
+  const paused = await requireCloudSync(device.branch.organisation);
+  if (paused) return withCors(paused, request);
   const branchId = device.branchId;
   const now = new Date();
 
-  const [organisation, staff, products, customers, suppliers] = await Promise.all([
+  const [organisation, staff, products, customers, suppliers, subscription] = await Promise.all([
     db.organisation.findUniqueOrThrow({ where: { id: device.branch.organisationId } }),
     db.user.findMany({
       where: { organisationId: device.branch.organisationId, isActive: true, pinHash: { not: null }, role: { in: ["OWNER", "CASHIER"] }, OR: [{ branchId: null }, { branchId }] },
@@ -26,8 +30,10 @@ export async function GET(request: Request): Promise<Response> {
     }),
     db.product.findMany({ where: { branchId, isActive: true }, include: catalogueInclude, orderBy: { name: "asc" } }),
     db.customer.findMany({ where: { branchId, isActive: true }, include: { ledger: { select: { type: true, amount: true, createdAt: true } } }, orderBy: { name: "asc" } }),
-    db.supplier.findMany({ where: { branchId }, select: { id: true, name: true }, orderBy: { name: "asc" } })
+    db.supplier.findMany({ where: { branchId }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    db.subscription.findUnique({ where: { organisationId: device.branch.organisationId }, include: { plan: true } })
   ]);
+  const plan = subscription ? summarize(subscription, now) : null;
   await db.device.update({ where: { id: device.id }, data: { lastSeenAt: now } });
 
   const settings = branchSettings(device.branch.settings);
@@ -35,6 +41,7 @@ export async function GET(request: Request): Promise<Response> {
     generatedAt: now.toISOString(),
     device: { id: device.id, name: device.name, branchId, branchName: device.branch.name },
     organisationName: organisation.name,
+    subscription: plan ? { status: plan.status, paidThrough: plan.paidThrough, daysLeft: plan.daysLeft, renewalDue: plan.renewalDue } : undefined,
     receipt: { header: settings.receiptHeader, footer: settings.receiptFooter, address: device.branch.address, phone: device.branch.phone },
     staff: staff.map((member) => ({ id: member.id, name: member.name, role: toRoleName(member.role), maxDiscountPercent: member.role === "OWNER" ? null : member.maxDiscountPercent })),
     products: products.map((product) => toCatalogueProduct(product, now)),

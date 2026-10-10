@@ -3,6 +3,7 @@ import { db } from "@pharmica/database/client";
 import { newDeviceSecret, recordAudit } from "../../../../../src/auth/authorization";
 import { apiError } from "../../../../../src/lib/api-response";
 import { corsOptions, withCors } from "../../../../../src/lib/cors";
+import { requireCloudSync } from "../../../../../src/billing/subscriptions";
 
 export function OPTIONS(request: Request): Response { return corsOptions(request); }
 
@@ -12,10 +13,14 @@ export async function POST(request: Request): Promise<Response> {
   const code = body?.activationCode?.trim().toUpperCase();
   if (!code) return withCors(apiError(400, "ACTIVATION_CODE_REQUIRED", "An activation code is required"), request);
 
-  const device = await db.device.findUnique({ where: { activationCode: code }, include: { branch: true } });
+  const device = await db.device.findUnique({ where: { activationCode: code }, include: { branch: { include: { organisation: { select: { id: true, isActive: true } } } } } });
   if (!device) return withCors(apiError(404, "ACTIVATION_CODE_INVALID", "This activation code is not valid"), request);
   if (!device.isActive) return withCors(apiError(403, "DEVICE_DEACTIVATED", "This device has been deactivated by the owner"), request);
   if (device.secretHash) return withCors(apiError(409, "DEVICE_ALREADY_ACTIVATED", "This code was already used. Ask the owner to reset the device activation"), request);
+
+  // A new counter needs its first download, so it cannot be set up while cloud sync is paused.
+  const paused = await requireCloudSync(device.branch.organisation);
+  if (paused) return withCors(paused, request);
 
   const { secret, secretHash } = newDeviceSecret();
   // Only one caller can claim the code: the update matches on the still-empty secret.

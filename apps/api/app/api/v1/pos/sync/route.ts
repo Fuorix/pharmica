@@ -3,6 +3,7 @@ import { db } from "@pharmica/database/client";
 import { authenticateDevice } from "../../../../../src/auth/authorization";
 import { apiError } from "../../../../../src/lib/api-response";
 import { corsOptions, withCors } from "../../../../../src/lib/cors";
+import { requireCloudSync } from "../../../../../src/billing/subscriptions";
 import { processOperation } from "../../../../../src/pos/operations";
 
 const MAX_BATCH = 100;
@@ -16,6 +17,9 @@ export function OPTIONS(request: Request): Response { return corsOptions(request
 export async function POST(request: Request): Promise<Response> {
   const device = await authenticateDevice(request);
   if (!device) return withCors(apiError(401, "DEVICE_NOT_ACTIVATED", "This POS device is not activated or has been deactivated"), request);
+  // Billing never stops on the counter; only cloud sync pauses, and queued work waits for it.
+  const paused = await requireCloudSync(device.branch.organisation);
+  if (paused) return withCors(paused, request);
 
   const body = await request.json().catch(() => null) as { operations?: unknown } | null;
   if (!body || !Array.isArray(body.operations) || body.operations.length === 0) return withCors(apiError(400, "INVALID_SYNC_PUSH", "At least one operation is required"), request);

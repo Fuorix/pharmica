@@ -3,6 +3,7 @@ import { authenticateDevice } from "../../../../../src/auth/authorization";
 import { masterSearchWhere, rankMatches, toMasterSummary } from "../../../../../src/catalogue/catalogue";
 import { apiError } from "../../../../../src/lib/api-response";
 import { corsOptions, withCors } from "../../../../../src/lib/cors";
+import { requireCloudSync } from "../../../../../src/billing/subscriptions";
 
 export function OPTIONS(request: Request): Response { return corsOptions(request); }
 
@@ -13,6 +14,9 @@ export function OPTIONS(request: Request): Response { return corsOptions(request
 export async function GET(request: Request): Promise<Response> {
   const device = await authenticateDevice(request);
   if (!device) return withCors(apiError(401, "DEVICE_NOT_ACTIVATED", "This POS device is not activated or has been deactivated"), request);
+  // Billing never stops on the counter; only cloud sync pauses, and queued work waits for it.
+  const paused = await requireCloudSync(device.branch.organisation);
+  if (paused) return withCors(paused, request);
   const query = new URL(request.url).searchParams.get("q")?.trim();
   if (!query || query.length < 2) return withCors(Response.json({ products: [] }, { headers: { "x-api-version": "v1" } }), request);
 

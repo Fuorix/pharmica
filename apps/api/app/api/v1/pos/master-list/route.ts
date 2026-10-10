@@ -4,6 +4,7 @@ import { authenticateDevice } from "../../../../../src/auth/authorization";
 import { toMasterSummary } from "../../../../../src/catalogue/catalogue";
 import { apiError } from "../../../../../src/lib/api-response";
 import { corsOptions, withCors } from "../../../../../src/lib/cors";
+import { requireCloudSync } from "../../../../../src/billing/subscriptions";
 
 const MAX_PAGE = 1000;
 
@@ -27,6 +28,9 @@ export function OPTIONS(request: Request): Response { return corsOptions(request
 export async function GET(request: Request): Promise<Response> {
   const device = await authenticateDevice(request);
   if (!device) return withCors(apiError(401, "DEVICE_NOT_ACTIVATED", "This POS device is not activated or has been deactivated"), request);
+  // Billing never stops on the counter; only cloud sync pauses, and queued work waits for it.
+  const paused = await requireCloudSync(device.branch.organisation);
+  if (paused) return withCors(paused, request);
   const params = new URL(request.url).searchParams;
   const since = params.get("since");
   const after = since ? decodeCursor(since) : null;
