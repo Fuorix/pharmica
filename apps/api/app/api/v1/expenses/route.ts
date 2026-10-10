@@ -6,6 +6,12 @@ import { apiError } from "../../../../src/lib/api-response";
 import { corsOptions, withCors } from "../../../../src/lib/cors";
 import { money, optionalTrimmed, parseBody, trimmed } from "../../../../src/lib/validation";
 import { parsePeriod, pkDayStart, requireBranches } from "../../../../src/reports/period";
+import { requireFeature } from "../../../../src/billing/subscriptions";
+
+/** Expenses are part of accounting: paused with reports when the subscription lapses, and only on plans that include it. */
+async function requireAccounting(role: string, organisationId: string | null | undefined): Promise<Response | null> {
+  return role === "super-admin" || !organisationId ? null : requireFeature(organisationId, "accounting");
+}
 
 export function OPTIONS(request: Request): Response { return corsOptions(request); }
 
@@ -41,6 +47,8 @@ export async function GET(request: Request): Promise<Response> {
   const params = new URL(request.url).searchParams;
   const scope = await requireBranches(access.user, params);
   if ("response" in scope) return withCors(scope.response, request);
+  const blocked = await requireAccounting(access.user.role, scope.branches[0]?.organisationId ?? access.user.organisationId);
+  if (blocked) return withCors(blocked, request);
   const period = parsePeriod(params);
   if ("response" in period) return withCors(period.response, request);
 
@@ -60,6 +68,8 @@ export async function POST(request: Request): Promise<Response> {
   if ("response" in body) return withCors(body.response, request);
   const scope = await requireBranch(access.user, body.data.branchId);
   if ("response" in scope) return withCors(scope.response, request);
+  const blocked = await requireAccounting(access.user.role, scope.branch.organisationId);
+  if (blocked) return withCors(blocked, request);
 
   const spentAt = body.data.day ? new Date(pkDayStart(body.data.day).getTime() + 12 * 3_600_000) : new Date();
   if (Number.isNaN(spentAt.getTime()) || spentAt.getTime() > Date.now() + 86_400_000) return withCors(apiError(400, "INVALID_DATE", "Expense date cannot be in the future"), request);

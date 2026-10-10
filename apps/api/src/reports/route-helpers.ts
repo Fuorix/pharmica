@@ -1,14 +1,21 @@
 import { requireAuth } from "../auth/authorization";
+import { requireFeature } from "../billing/subscriptions";
 import { corsOptions, withCors } from "../lib/cors";
 import { parsePeriod, requireBranches, type Period, type ScopeBranch } from "./period";
 
 /** Owner reports: signed-in owner (or Pharmica admin), the branches asked for, and the date range. */
-export async function reportScope(request: Request): Promise<{ branches: ScopeBranch[]; period: Period; params: URLSearchParams } | { response: Response }> {
+export async function reportScope(request: Request, feature: "reports" | "accounting" = "reports"): Promise<{ branches: ScopeBranch[]; period: Period; params: URLSearchParams } | { response: Response }> {
   const access = await requireAuth(request, ["owner", "super-admin"]);
   if ("response" in access) return access;
   const params = new URL(request.url).searchParams;
   const scope = await requireBranches(access.user, params);
   if ("response" in scope) return scope;
+  // Reports pause when the subscription lapses, and accounting needs a plan that includes it. Support staff can always look.
+  const organisationId = scope.branches[0]?.organisationId ?? access.user.organisationId;
+  if (access.user.role !== "super-admin" && organisationId) {
+    const blocked = await requireFeature(organisationId, feature);
+    if (blocked) return { response: blocked };
+  }
   const period = parsePeriod(params);
   if ("response" in period) return period;
   return { branches: scope.branches, period, params };
