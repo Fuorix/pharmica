@@ -4,6 +4,7 @@ import { hashCredential } from "../../../../src/auth/credentials";
 import { revokeUserSessions, toRoleName } from "../../../../src/auth/session";
 import { apiError } from "../../../../src/lib/api-response";
 import { corsOptions, withCors } from "../../../../src/lib/cors";
+import { requireCapability } from "../../../../src/billing/subscriptions";
 
 const roleMap = { owner: "OWNER", cashier: "CASHIER", "super-admin": "SUPER_ADMIN" } as const;
 type RoleName = keyof typeof roleMap;
@@ -65,6 +66,11 @@ export async function POST(request: Request): Promise<Response> {
   if (body.branchId) {
     const branch = await db.branch.findFirst({ where: { id: body.branchId, organisationId: organisationId ?? undefined } });
     if (!branch) return withCors(apiError(400, "INVALID_BRANCH", "Branch does not belong to the organisation"), request);
+  }
+  // New staff cannot be added once the subscription has expired.
+  if (organisationId) {
+    const blocked = await requireCapability(organisationId, "manage");
+    if (blocked) return withCors(blocked, request);
   }
 
   const login = body.login.trim().toLowerCase();

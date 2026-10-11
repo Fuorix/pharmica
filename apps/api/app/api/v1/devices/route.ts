@@ -2,6 +2,7 @@ import { db } from "@pharmica/database/client";
 import { canAccessScope, newActivationCode, recordAudit, requireAuth } from "../../../../src/auth/authorization";
 import { apiError } from "../../../../src/lib/api-response";
 import { corsOptions, withCors } from "../../../../src/lib/cors";
+import { requireRoomFor } from "../../../../src/billing/subscriptions";
 
 // Never return the device secret hash.
 const deviceFields = { id: true, branchId: true, name: true, activationCode: true, activatedAt: true, isActive: true, lastSeenAt: true, createdAt: true, diagnostics: true, diagnosticsAt: true } as const;
@@ -27,6 +28,9 @@ export async function POST(request: Request): Promise<Response> {
   const branch = await db.branch.findUnique({ where: { id: body.branchId } });
   if (!branch || !canAccessScope(access.user, branch.organisationId, branch.id)) return withCors(apiError(403, "FORBIDDEN", "Branch access denied"), request);
 
+  const full = await requireRoomFor(branch.organisationId, "devices");
+  if (full) return withCors(full, request);
+
   const device = await db.device.create({ data: { branchId: branch.id, name: body.name.trim(), activationCode: newActivationCode() }, select: deviceFields });
   await recordAudit({ organisationId: branch.organisationId, branchId: branch.id, userId: access.user.id, action: "device.created", entityType: "device", entityId: device.id });
   return withCors(Response.json({ device }, { status: 201, headers: { "x-api-version": "v1" } }), request);
@@ -41,6 +45,11 @@ export async function PATCH(request: Request): Promise<Response> {
 
   const device = await db.device.findUnique({ where: { id: body.deviceId }, include: { branch: true } });
   if (!device || !canAccessScope(access.user, device.branch.organisationId, device.branchId)) return withCors(apiError(403, "FORBIDDEN", "Device access denied"), request);
+
+  if (body.isActive === true && !device.isActive) {
+    const full = await requireRoomFor(device.branch.organisationId, "devices");
+    if (full) return withCors(full, request);
+  }
 
   const updated = await db.$transaction(async (transaction) => {
     const result = await transaction.device.update({
