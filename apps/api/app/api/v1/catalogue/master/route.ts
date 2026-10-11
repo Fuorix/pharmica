@@ -31,7 +31,7 @@ export async function GET(request: Request): Promise<Response> {
   const access = await requireAuth(request, ["owner", "super-admin"]);
   if ("response" in access) return withCors(access.response, request);
   const query = new URL(request.url).searchParams.get("q")?.trim();
-  const products = await db.masterProduct.findMany({ where: query ? masterSearchWhere(query) : undefined, orderBy: { name: "asc" }, take: 100 });
+  const products = await db.masterProduct.findMany({ where: query ? masterSearchWhere(query) : { mergedIntoId: null }, orderBy: { name: "asc" }, take: 100 });
   const summaries = products.map(toMasterSummary);
   return withCors(Response.json({ products: query ? rankMatches(summaries, query) : summaries }, { headers: { "x-api-version": "v1" } }), request);
 }

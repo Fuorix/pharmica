@@ -58,14 +58,16 @@ export function toMasterSummary(master: Prisma.MasterProductGetPayload<object>):
     tabletsPerStrip: master.tabletsPerStrip,
     officialRetailPrice: toNumber(master.officialRetailPrice),
     isPrescriptionOnly: master.isPrescriptionOnly,
-    isControlled: master.isControlled
+    isControlled: master.isControlled,
+    ...(master.mergedIntoId ? { mergedIntoId: master.mergedIntoId } : {})
   };
 }
 
 /** Text match across the fields a cashier searches by: brand/name, generic (salt), company, and barcode. */
 export function masterSearchWhere(query: string): Prisma.MasterProductWhereInput {
   const contains = { contains: query, mode: "insensitive" as const };
-  return { OR: [{ name: contains }, { brand: contains }, { generic: contains }, { company: contains }, { barcode: query }] };
+  // Entries merged into another are hidden everywhere.
+  return { mergedIntoId: null, OR: [{ name: contains }, { brand: contains }, { generic: contains }, { company: contains }, { barcode: query }] };
 }
 
 export function productSearchWhere(query: string): Prisma.ProductWhereInput {

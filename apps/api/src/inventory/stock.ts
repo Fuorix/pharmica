@@ -75,7 +75,9 @@ export async function receivePurchase(tx: Tx, context: StockContext, input: Omit
 
     let product = line.productId ? await tx.product.findFirst({ where: { id: line.productId, branchId: context.branchId }, include: { masterProduct: true } }) : null;
     if (!product && line.masterProductId) {
-      const master = await tx.masterProduct.findUnique({ where: { id: line.masterProductId } });
+      let master = await tx.masterProduct.findUnique({ where: { id: line.masterProductId } });
+      // A counter may still hold a duplicate that has since been merged; the stock goes to the entry it was merged into.
+      for (let hops = 0; master?.mergedIntoId && hops < 5; hops++) master = await tx.masterProduct.findUnique({ where: { id: master.mergedIntoId } });
       if (!master) throw new StockError("PRODUCT_NOT_FOUND", `${label}: the medicine is not on the master list`);
       product = await tx.product.upsert({
         where: { branchId_masterProductId: { branchId: context.branchId, masterProductId: master.id } },

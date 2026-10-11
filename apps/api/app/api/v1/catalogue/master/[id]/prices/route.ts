@@ -65,7 +65,8 @@ export async function POST(request: Request, context: Context): Promise<Response
     });
     const entries = (await transaction.masterPriceHistory.findMany({ where: { masterProductId: id } })).map((row) => ({ ...row, price: Number(row.price) }));
     const current = resolveCurrentPrice(entries, now);
-    await transaction.masterProduct.update({ where: { id }, data: { officialRetailPrice: current?.price ?? null } });
+    // A scheduled price leaves the current one alone until it starts, even for a medicine with no earlier history.
+    if (current) await transaction.masterProduct.update({ where: { id }, data: { officialRetailPrice: current.price } });
     return created;
   });
 
