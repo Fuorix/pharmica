@@ -208,6 +208,7 @@ export function App() {
   const receipt = state.snapshot?.receipt;
   const header = { organisationName: state.snapshot?.organisationName ?? "Pharmacy", branchName: device.branchName, deviceName: device.name, receiptHeader: receipt?.header, receiptFooter: receipt?.footer, address: receipt?.address, phone: receipt?.phone };
   const status = state.sync;
+  const subscription = state.snapshot?.subscription;
 
   return <main className="pos-shell">
     <header className="pos-header">
@@ -216,14 +217,18 @@ export function App() {
         {entry.label}{entry.value === "stock" && alerts > 0 ? <span className="badge">{alerts}</span> : null} <b>Ctrl+{entry.key}</b>
       </button>)}</nav>}
       <div className="header-actions">
-        <button className={`sync-pill ${status.online ? "online" : "offline"}`} onClick={() => setDialog({ kind: "sync" })} title="Sync and settings">
-          <span />{status.online ? "Online" : "Offline"}{status.pending ? ` · ${status.pending} to upload` : ""}{status.failed ? ` · ${status.failed} rejected` : ""}
+        <button className={`sync-pill ${status.paused ? "paused" : status.online ? "online" : "offline"}`} onClick={() => setDialog({ kind: "sync" })} title="Sync and settings">
+          <span />{status.paused ? "Sync paused" : status.online ? "Online" : "Offline"}{status.pending ? ` · ${status.pending} to upload` : ""}{status.failed ? ` · ${status.failed} rejected` : ""}
         </button>
         <div className="signed-in">{user.name} · {user.role}</div>
         <button className="ghost" onClick={() => setDialog({ kind: "help" })}>Help <b>F1</b></button>
         <button className="ghost" onClick={lockCounter}>Lock <b>F12</b></button>
       </div>
     </header>
+
+    {status.paused
+      ? <p className="account-bar">Cloud sync is paused: {status.paused} Sales stay safe on this counter and upload by themselves once the owner renews.</p>
+      : subscription?.renewalDue && <p className="account-bar soft">Pharmica subscription {subscription.daysLeft > 0 ? `renews in ${subscription.daysLeft} day${subscription.daysLeft === 1 ? "" : "s"}` : "is due"}. The owner can renew from the owner panel.</p>}
 
     {state.shift && mode === "receive" && <ReceivePanel engine={engine} state={state} user={user} />}
     {state.shift && mode === "stock" && <StockPanel engine={engine} state={state} user={user} />}

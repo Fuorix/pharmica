@@ -205,3 +205,6 @@ h1 { font-size: 30px; }
 
 .dialog label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-size: 14px; }
 .dialog label.check input { width: auto; }
+.sync-pill.paused span { background: var(--warn); }
+.account-bar { margin: 0 auto 12px; max-width: 1320px; padding: 10px 14px; border: 1px solid var(--warn); color: var(--warn); background: var(--panel); font-size: 14px; }
+.account-bar.soft { border-color: var(--line-2); color: var(--text); }
