@@ -94,3 +94,18 @@
 .price-updates td small { display: block; color: #5f6a62; }
 .tabs { flex-wrap: wrap; }
 @media (max-width: 700px) { .settings-form { grid-template-columns: 1fr; } .bar-row { grid-template-columns: 70px 1fr 90px; } }
+
+.subscription-banner { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px 16px; border-radius: 6px; margin-bottom: 18px; font-size: 14px; }
+.subscription-banner.warning { background: #f8e4dc; color: #8f3b1f; border: 1px solid #ecc3b2; }
+.subscription-banner.info { background: #eef3ea; color: #1c563f; border: 1px solid #cfe0cf; }
+button.link { background: none; color: inherit; padding: 0; text-decoration: underline; font-weight: 700; }
+.plain-list { margin: 12px 0 0; padding-left: 18px; }
+.plain-list li { border: 0; padding: 4px 0; }
+.plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.plan-card { border: 1px solid #ded8ca; border-radius: 6px; padding: 14px; display: flex; flex-direction: column; gap: 8px; background: #fff; }
+.plan-card.chosen { border-color: #1c563f; box-shadow: 0 0 0 1px #1c563f; }
+.plan-card span { color: #5f6a62; font-size: 13px; }
+.plan-card label.check { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+.renew-actions { margin: 14px 0; }
+.pay-how h3 { font-family: Georgia, serif; font-weight: 500; margin: 8px 0; }
+.renew-panel, .metrics + .panel { margin-bottom: 18px; }
