@@ -107,7 +107,7 @@ The end-to-end tests drive the real counter in Microsoft Edge against the API an
 pnpm --filter @pharmica/pos e2e
 ```
 
-There are four scenarios: offline billing (sell, void, return, restart, sync), receiving (scan a 2D code, receive with bonus, sell offline, write off, check the ledger), credit with the register (new customer, credit sale, repayment, controlled-drug sale with prescription, shift cash), and the owner panel (dashboard, an expense in profit and loss, receipt settings, data export). They create and then delete their own tenant (`e2e-pos-org`). It starts the API, POS, and owner web dev servers if they are not already running.
+There are four scenarios: offline billing (sell, void, return, restart, sync), receiving (scan a 2D code, receive with bonus, sell offline, write off, check the ledger), credit with the register (new customer, credit sale, repayment, controlled-drug sale with prescription, shift cash), the owner panel (dashboard, an expense in profit and loss, receipt settings, data export), and onboarding (an admin creates a pharmacy, the owner replaces the temporary password and adds a cashier, the counter activates, the admin records the first payment). They create and then delete their own tenants and an `e2e-admin@test.local` admin. It starts the API, POS, owner web, and admin web dev servers if they are not already running.
 
 ## Owner reports (how every number is worked out)
 
@@ -125,7 +125,44 @@ Every report states the days and branches it covers. Days are Pakistan calendar 
 - **Branch settings** (receipt header and footer, address, phone, near-expiry and overdue days, large-discount alert) are stored on the branch. Counters print the receipt text after their next sync.
 - **Data export** (`GET /api/v1/export`): every table as JSON, or one table as CSV. Password and PIN hashes, device secrets, activation codes, and sessions are never exported.
 
-The tax report and FBR settings are not in the MVP. Subscription screens arrive with subscriptions (M9).
+The tax report and FBR settings are not in the MVP.
+
+## Pharmica admin panel (super-admin)
+
+Everything under `/api/v1/admin` is for Pharmica staff only; owners and cashiers get 403 on every admin route, and a test walks all of them to prove it.
+
+- **Onboarding a pharmacy** creates the organisation, its first branch, the owner, the subscription, and the counters in one step. The owner gets a temporary password, shown once. Until they choose their own, every API call except changing the password returns `CREDENTIAL_CHANGE_REQUIRED`. Counter activation codes are shown until each counter is activated.
+- **Go-live checklist**: the owner has signed in and set a password; the branch address and phone are set; a counter is activated; staff have PINs; the data migration is done or not needed (set by staff); stock is entered; the first sale has reached the cloud; the first payment has been received.
+- **Suspending** a pharmacy (a reason is required) signs everyone out and stops cloud sync. Counters keep billing offline, and they are told sync is paused, not that they were deactivated. Unpaid subscriptions are not suspended; grace mode handles them.
+- **Support view**: each counter's last report (pending and rejected uploads, last error, app version), failed, conflicting, or flagged uploads, and the pharmacy's audit history, paged. It is read-only and never shows password hashes, device secrets, or used activation codes.
+- **Catalogue curation**: nothing reaches shops until a person reviews it.
+  - Price reports from shops are grouped by medicine and printed price across all shops. Publishing one records a `SHOP_REPORT` price; dismissing needs a reason.
+  - SRO and price-list CSV uploads are matched by barcode, then DRAP registration number, then exact name. Rows are flagged as unchanged, not found, ambiguous, or invalid. A reviewer can match a row by hand or skip it, then publishes or rejects the whole file. A future effective date schedules the price instead of applying it now.
+  - Duplicate master entries (same name, or same salt, strength, company, and pack) can be merged. Shops stocking only the duplicate are moved to the kept entry. A shop stocking both keeps its duplicate item, with its stock and history, as its own item. The duplicate is hidden from search, counters drop it on their next sync, and stock received against it lands on the kept entry. Each merge is recorded with who did it, why, and what moved.
+- Price changes by Pharmica staff directly (the master price form) are already a reviewed action and are audited.
+
+## Subscriptions and grace mode
+
+Each pharmacy has one subscription on a plan: Starter, Pro, or Chain, priced per month, with quarterly and yearly prepay discounts, branch and counter limits, and features (`reports`, `accounting`, `mobile`). The state is always worked out from the dates, so the same dates always give the same state:
+
+| State | When | What works |
+| --- | --- | --- |
+| Trial | before the trial end | everything |
+| Active | before the paid-through date | everything |
+| Grace | up to 30 days after the paid-through date | billing at the counter, data export, viewing and paying invoices, adding counters and staff. Cloud sync, reports, and the mobile app are paused. |
+| Expired | after grace | as grace, and new counters, staff, and branches are blocked too |
+| Cancelled | cancelled by staff | as expired |
+
+- **Billing never stops.** While sync is paused, the counter keeps every sale in its queue untouched (no retries used up, nothing set aside) and shows "Sync paused" with the reason. It uploads everything once the shop renews.
+- **Renewals.** The renewal invoice is issued 7 days before the paid-through date (or at once if the shop has lapsed), and the owner panel and counters show a reminder. The owner can choose monthly, quarterly, or yearly, or another plan that fits their branches and counters. An unpaid invoice is then re-issued and the old one voided, never deleted.
+- **Payments.** Staff record cash or bank transfers against an invoice with a receipt number, which the owner sees in their payment history with a printable receipt. Part-payments are allowed and overpayments are refused. A fully paid invoice extends the subscription from the old paid-through date (on time, in trial, or in grace), or from the payment day if the shop had expired.
+- **Online payments** (JazzCash, Easypaisa, Raast) report to `POST /api/v1/billing/callback/<provider>` with an HMAC-SHA256 signature of the body (`x-pharmica-signature: sha256=…`), using the secret in `PAYMENT_WEBHOOK_SECRET_<PROVIDER>`.
+  - Repeated callbacks are applied once.
+  - A payment whose invoice or amount does not match is kept as unmatched until staff match it.
+  - Until a provider is connected and configured, its callback refuses everything and the owner panel says online payment is coming.
+- **History.** Every status change, invoice, payment, extension, and plan change is written to the subscription history, which the database keeps append-only.
+- **Daily billing check.** `POST /api/v1/admin/billing/run` (the "Run billing check" button) brings every subscription up to date. Subscriptions also update whenever a shop uses Pharmica, so this only catches shops that have gone quiet; a scheduler can call it once a day.
+- Pharmacies that existed before subscriptions were moved onto a 30-day Pro trial by the migration.
 
 ## Database changes
 

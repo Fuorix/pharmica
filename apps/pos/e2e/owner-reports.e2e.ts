@@ -13,7 +13,7 @@ test("owner dashboard, expenses, profit and loss, settings, and export", async (
   await page.getByLabel("Password").fill("e2e-password-123");
   await page.getByRole("button", { name: "Sign in" }).click();
 
-  await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
   await expect(page.getByText("Sales today")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Last 7 days" })).toBeVisible();
 
