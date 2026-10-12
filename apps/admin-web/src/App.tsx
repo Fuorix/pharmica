@@ -1,12 +1,37 @@
+import { useState } from "react";
+import { CataloguePage } from "./CataloguePage";
+import { CollectionsPage } from "./CollectionsPage";
+import { OverviewPage } from "./OverviewPage";
+import { PlansPage } from "./PlansPage";
 import { useAdminSession } from "./session";
+import { TenantDetailPage } from "./TenantDetailPage";
+import { TenantsPage } from "./TenantsPage";
 
-const queue = [
-  ["Price report", "Nobel Pharma · 14 shops", "Review"],
-  ["New tenant", "Al-Madina Medical Store", "Onboard"],
-  ["Grace mode", "4 subscriptions overdue", "Collect"]
-];
+export type Section = "overview" | "tenants" | "catalogue" | "collections" | "plans";
+
+const SECTIONS: Array<[Section, string]> = [["overview", "Overview"], ["tenants", "Pharmacies"], ["catalogue", "Catalogue"], ["collections", "Collections"], ["plans", "Plans"]];
 
 export function App() {
   const { user, signOut } = useAdminSession();
-  return <main className="admin-shell"><aside><div className="mark">P</div><p className="eyebrow">PHARMICA OPS</p><h1>Control room</h1><nav><a className="active">Overview</a><a>Tenants</a><a>Catalogue</a><a>Collections</a><a>System health</a></nav><div className="account"><span>{user.name}</span><button onClick={signOut}>Sign out</button></div></aside><section className="workspace"><header><div><p className="eyebrow">WEDNESDAY, 01 OCTOBER 2026</p><h2>Platform overview</h2></div><span className="status">All systems operational</span></header><div className="stats"><div><span>Active shops</span><strong>126</strong></div><div><span>Monthly revenue</span><strong>PKR 2.8m</strong></div><div><span>In grace mode</span><strong>4</strong></div></div><article className="queue"><div className="queue-title"><h3>Work queue</h3><span>3 items</span></div>{queue.map(([title, detail, action]) => <div className="queue-row" key={title}><div><strong>{title}</strong><span>{detail}</span></div><button>{action}</button></div>)}</article></section></main>;
+  const [section, setSection] = useState<Section>("overview");
+  const [tenantId, setTenantId] = useState<string | null>(null);
+  const go = (next: Section) => { setSection(next); setTenantId(null); };
+
+  return <main className="admin-shell">
+    <aside>
+      <div className="mark">P</div>
+      <p className="eyebrow">PHARMICA OPS</p>
+      <h1>Control room</h1>
+      <nav>{SECTIONS.map(([key, label]) => <a key={key} href={`#${key}`} className={section === key ? "active" : ""} onClick={(event) => { event.preventDefault(); go(key); }}>{label}</a>)}</nav>
+      <div className="account"><span>{user.name}</span><button onClick={signOut}>Sign out</button></div>
+    </aside>
+    <section className="workspace">
+      {tenantId ? <TenantDetailPage id={tenantId} onBack={() => setTenantId(null)} />
+        : section === "overview" ? <OverviewPage go={go} />
+        : section === "tenants" ? <TenantsPage />
+        : section === "catalogue" ? <CataloguePage />
+        : section === "collections" ? <CollectionsPage openTenant={setTenantId} />
+        : <PlansPage />}
+    </section>
+  </main>;
 }
