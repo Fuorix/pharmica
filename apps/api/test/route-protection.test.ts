@@ -14,7 +14,9 @@ const PUBLIC = new Set([
   "POST /api/v1/auth/login",
   "POST /api/v1/auth/logout",
   "POST /api/v1/auth/pin-login",
-  "POST /api/v1/devices/activate"
+  "POST /api/v1/devices/activate",
+  // Server-to-server: protected by the provider signature instead (see billing tests).
+  "POST /api/v1/billing/callback/[id]"
 ]);
 
 const routes = globSync("**/route.ts", { cwd: appDir }).map((file) => ({

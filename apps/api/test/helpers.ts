@@ -42,6 +42,13 @@ export async function seedTenants() {
   const branchA2 = await db.branch.create({ data: { organisationId: orgA.id, name: "A2" } });
   const branchB1 = await db.branch.create({ data: { organisationId: orgB.id, name: "B1" } });
 
+  // Both test pharmacies are paid up a year ahead on a plan with every feature, so nothing is paused unless a test says so.
+  const plan = await db.plan.create({ data: { code: "pro", name: "Pro", monthlyPrice: 6000, quarterlyDiscountPercent: 5, yearlyDiscountPercent: 15, maxBranches: 3, maxDevices: 6, features: ["reports", "accounting", "mobile"], trialDays: 14 } });
+  const paidThrough = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+  for (const organisation of [orgA, orgB]) {
+    await db.subscription.create({ data: { organisationId: organisation.id, planId: plan.id, status: "ACTIVE", isTrial: false, paidThrough } });
+  }
+
   const user = (data: { login: string; role: "OWNER" | "CASHIER" | "SUPER_ADMIN"; organisationId?: string; branchId?: string }) =>
     db.user.create({ data: { name: data.login, credentialHash, pinHash, ...data } });
 
@@ -58,7 +65,7 @@ export async function seedTenants() {
   const productA1 = await db.product.create({ data: { branchId: branchA1.id, masterProductId: master.id, name: master.name } });
   await stockBatch(productA1.id, { batchNo: "B-1", expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), quantity: 1000, costPrice: 80, retailPrice: 100 });
 
-  return { orgA, orgB, branchA1, branchA2, branchB1, ownerA, cashierA1, cashierA2, ownerB, admin, deviceA1, deviceB1, productA1 };
+  return { orgA, orgB, branchA1, branchA2, branchB1, ownerA, cashierA1, cashierA2, ownerB, admin, deviceA1, deviceB1, productA1, plan };
 }
 
 export async function webSession(userId: string): Promise<string> {
@@ -76,7 +83,7 @@ type Handler = (request: Request, context: { params: Promise<{ id: string }> }) 
 export async function call(
   handler: Handler,
   options: { method?: string; path?: string; token?: string; deviceToken?: string; body?: unknown; params?: { id: string }; headers?: Record<string, string> } = {}
-): Promise<{ status: number; body: Record<string, unknown> & { error?: { code: string } }; headers: Headers }> {
+): Promise<{ status: number; body: Record<string, unknown> & { error?: { code: string; message?: string } }; headers: Headers }> {
   const headers = new Headers(options.headers);
   if (options.token) headers.set("authorization", `Bearer ${options.token}`);
   if (options.deviceToken) headers.set("x-device-token", options.deviceToken);
