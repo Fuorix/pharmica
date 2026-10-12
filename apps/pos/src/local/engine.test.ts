@@ -1,7 +1,7 @@
 import type { DeviceDiagnostics, MasterListPage, MasterProductSummary, PosOperation, PosSnapshot, PosStaffMember, PosSyncResult } from "@pharmica/contracts";
 import { beforeEach, describe, expect, it } from "vitest";
 import { memoryDb, type LocalDb } from "./db";
-import { DeviceRevokedError, OfflineError, PosEngine, type Transport } from "./engine";
+import { DeviceRevokedError, OfflineError, PosEngine, SyncPausedError, type Transport } from "./engine";
 import { checkPin, createPinVerifier } from "./pin";
 
 const cashier: PosStaffMember = { id: "u-cashier", name: "Sana", role: "cashier", maxDiscountPercent: 5 };
@@ -32,6 +32,8 @@ class FakeServer implements Transport {
   received: PosOperation[] = [];
   offline = false;
   revoked = false;
+  /** The server refuses sync, as for a lapsed subscription. */
+  paused = false;
   reject: string | null = null;
   /** Uploads work but downloading the snapshot fails, as when the line drops mid-sync. */
   snapshotDown = false;
@@ -65,6 +67,7 @@ class FakeServer implements Transport {
   }
   async push(operations: PosOperation[]): Promise<PosSyncResult[]> {
     if (this.offline) throw new OfflineError("offline");
+    if (this.paused) throw new SyncPausedError("The subscription has lapsed, so this is paused (grace mode).");
     if (this.revoked) throw new DeviceRevokedError("revoked");
     return operations.map((operation) => {
       if (this.reject === operation.type) return { id: operation.id, status: "failed", error: { code: "REJECTED", message: "no" } };
@@ -190,6 +193,25 @@ describe("syncing", () => {
     server.reject = null;
     await engine.retryFailed();
     expect(engine.getState().sync).toMatchObject({ pending: 0, failed: 0 });
+  });
+
+  it("keeps billing and every queued sale while the subscription has lapsed, and uploads them after renewal", async () => {
+    server.offline = false;
+    server.paused = true;
+    await sell([{ quantity: 1 }]);
+    await engine.syncNow();
+    await sell([{ quantity: 1 }]);
+    await engine.syncNow();
+    expect(engine.getState().sync).toMatchObject({ pending: 2, failed: 0, paused: expect.stringContaining("lapsed"), error: null });
+    // It backs off instead of retrying flat out.
+    expect(engine.getState().sync.consecutiveFailures).toBeGreaterThan(0);
+    expect(engine.getState().outbox.every((op) => op.status === "pending" && op.attempts === 0)).toBe(true);
+    expect(engine.getState().deviceRevoked).toBe(false);
+
+    server.paused = false;
+    await engine.syncNow();
+    expect(engine.getState().sync).toMatchObject({ pending: 0, failed: 0, paused: null, consecutiveFailures: 0 });
+    expect(server.received.filter((op) => op.type === "sale")).toHaveLength(2);
   });
 
   it("notices when the owner deactivates the counter", async () => {

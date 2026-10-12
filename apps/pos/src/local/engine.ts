@@ -29,6 +29,8 @@ function productFromMaster(id: string, master: MasterProductSummary, branchId: s
 export class OfflineError extends Error {}
 /** The owner deactivated or reset this counter. */
 export class DeviceRevokedError extends Error {}
+/** The server refuses sync for now (subscription lapsed, pharmacy suspended). Nothing is lost; it waits. */
+export class SyncPausedError extends Error {}
 
 export interface Transport {
   snapshot(): Promise<PosSnapshot>;
@@ -88,7 +90,7 @@ export class PosEngine {
   static async open(db: LocalDb, transport: Transport, deviceId: string): Promise<PosEngine> {
     const engine = new PosEngine(db, transport, deviceId, {
       snapshot: null, stock: null, outbox: [], sales: [], held: [], purchases: [], payments: [], shift: null, settings: { paperWidth: 80 }, deviceRevoked: false,
-      sync: { online: typeof navigator === "undefined" ? true : navigator.onLine, syncing: false, pending: 0, failed: 0, lastSyncAt: null, lastSnapshotAt: null, error: null, consecutiveFailures: 0, nextAttemptAt: null, masterProducts: 0 }
+      sync: { online: typeof navigator === "undefined" ? true : navigator.onLine, syncing: false, pending: 0, failed: 0, lastSyncAt: null, lastSnapshotAt: null, error: null, consecutiveFailures: 0, nextAttemptAt: null, masterProducts: 0, paused: null }
     });
     await engine.reload();
     return engine;
@@ -306,10 +308,14 @@ export class PosEngine {
     for (let page = 0; page < MASTER_PAGES_PER_SYNC; page++) {
       const result = await this.transport.masterList(cursor);
       if (result.products.length) {
-        for (const product of result.products) stored.set(product.id, product);
+        // A duplicate merged into another entry is dropped, so it can no longer be picked when receiving.
+        for (const product of result.products) {
+          if (product.mergedIntoId) stored.delete(product.id);
+          else stored.set(product.id, product);
+        }
         // Each page is saved with its cursor and the new count, so a dropped connection loses nothing.
         await this.db.write([
-          ...result.products.map((product) => ({ collection: "master" as const, id: product.id, value: product })),
+          ...result.products.map((product) => ({ collection: "master" as const, id: product.id, value: product.mergedIntoId ? undefined : product })),
           { collection: "meta" as const, id: "masterCursor", value: result.nextCursor },
           { collection: "meta" as const, id: "masterCount", value: stored.size }
         ]);
@@ -592,11 +598,13 @@ export class PosEngine {
       ]));
       await this.syncMaster();
       this.lastRunOk = !serverTrouble;
-      this.set({ sync: { ...this.state.sync, online: true, error: serverTrouble ? "The server is having trouble; uploads will be retried" : null } });
+      this.set({ sync: { ...this.state.sync, online: true, paused: null, error: serverTrouble ? "The server is having trouble; uploads will be retried" : null } });
     } catch (error) {
       this.lastRunOk = false;
       if (error instanceof DeviceRevokedError) this.set({ deviceRevoked: true });
-      this.set({ sync: { ...this.state.sync, online: !(error instanceof OfflineError), error: error instanceof OfflineError ? null : error instanceof Error ? error.message : "Sync failed" } });
+      // Paused is not an error: the queue is untouched and uploads resume when the shop renews.
+      if (error instanceof SyncPausedError) this.set({ sync: { ...this.state.sync, online: true, paused: error.message, error: null } });
+      else this.set({ sync: { ...this.state.sync, online: !(error instanceof OfflineError), error: error instanceof OfflineError ? null : error instanceof Error ? error.message : "Sync failed" } });
     } finally {
       await this.reload();
       const consecutiveFailures = this.lastRunOk ? 0 : this.state.sync.consecutiveFailures + 1;

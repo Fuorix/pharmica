@@ -1,5 +1,5 @@
 import { DEVICE_TOKEN_HEADER, type DeviceDiagnostics, type MasterListPage, type MasterProductSummary, type PosOperation, type PosSnapshot, type PosSyncResult } from "@pharmica/contracts";
-import { DeviceRevokedError, OfflineError, type Transport } from "./engine";
+import { DeviceRevokedError, OfflineError, SyncPausedError, type Transport } from "./engine";
 
 /** Talks to the API with the counter's device token, so uploads work whether or not anyone is signed in. */
 export function httpTransport(apiUrl: string, deviceToken: string): Transport {
@@ -13,7 +13,8 @@ export function httpTransport(apiUrl: string, deviceToken: string): Transport {
     if (response.status === 401) throw new DeviceRevokedError("This counter was deactivated or reset by the owner");
     if (response.status >= 500 || response.status === 0) throw new OfflineError(`Server error ${response.status}`);
     if (!response.ok) {
-      const body = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+      const body = await response.json().catch(() => null) as { error?: { code?: string; message?: string } } | null;
+      if (response.status === 402 || body?.error?.code === "ORGANISATION_SUSPENDED") throw new SyncPausedError(body?.error?.message ?? "Sync is paused");
       throw new Error(body?.error?.message ?? `Sync failed (${response.status})`);
     }
     return response;

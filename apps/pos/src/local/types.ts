@@ -141,6 +141,8 @@ export interface SyncStatus {
   nextAttemptAt: string | null;
   /** Master-list medicines stored on this counter for offline receiving. */
   masterProducts: number;
+  /** Why the server is not taking uploads (lapsed subscription or suspended pharmacy); billing carries on. */
+  paused: string | null;
 }
 
 /** What the counter works from: the last server snapshot adjusted by everything not yet confirmed. */
