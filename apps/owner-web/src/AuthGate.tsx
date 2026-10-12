@@ -1,5 +1,6 @@
 import { FormEvent, ReactNode, useCallback, useEffect, useState } from "react";
 import type { AuthResponse, AuthUser } from "@pharmica/contracts";
+import { ChangePassword } from "./ChangePassword";
 import { apiFetch, errorMessage, jsonBody, OwnerSessionContext } from "./session";
 
 const WRONG_PANEL = "This panel is for pharmacy owners. Cashiers sign in at the POS counter.";
@@ -41,6 +42,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }, []);
 
   if (user === undefined) return <main className="auth-state">Checking session...</main>;
+  if (user?.mustChangeCredential) return <ChangePassword name={user.name} onDone={() => setUser({ ...user, mustChangeCredential: false })} onSignOut={signOut} />;
   if (user) return <OwnerSessionContext.Provider value={{ user, signOut }}>{children}</OwnerSessionContext.Provider>;
 
   return <main className="auth-page"><form className="auth-card" onSubmit={submit}>
