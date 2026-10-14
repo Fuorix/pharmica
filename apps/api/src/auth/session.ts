@@ -102,11 +102,20 @@ export async function revokeUserSessions(userId: string): Promise<void> {
   await db.session.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
 }
 
+/**
+ * Lax by default: the panels and the API share one site (localhost, or subdomains of one domain).
+ * SESSION_COOKIE_SAMESITE=none lets a test deployment run the panels and the API on unrelated hosts (such as
+ * separate *.up.railway.app addresses); browsers that block third-party cookies will not sign in there.
+ */
+function cookieAttributes(): string {
+  if (process.env.SESSION_COOKIE_SAMESITE?.trim().toLowerCase() === "none") return "SameSite=None; Secure";
+  return `SameSite=Lax${process.env.NODE_ENV === "production" ? "; Secure" : ""}`;
+}
+
 export function sessionCookie(token: string, expiresAt: Date): string {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Expires=${expiresAt.toUTCString()}${secure}`;
+  return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; ${cookieAttributes()}; Expires=${expiresAt.toUTCString()}`;
 }
 
 export function expiredSessionCookie(): string {
-  return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+  return `${SESSION_COOKIE}=; Path=/; HttpOnly; ${cookieAttributes()}; Max-Age=0`;
 }
