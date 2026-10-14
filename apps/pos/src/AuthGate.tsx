@@ -164,7 +164,7 @@ function PinScreen({ engine, db, device, onSignedIn, onReactivate }: { engine: P
       <b>{index + 1}</b><strong>{member.name}</strong><span>{member.role}</span>
     </button>)}</div>
     {selected && <form className="pin-form" onSubmit={submit}>
-      <label>PIN for {selected.name}<input ref={pinRef} type="password" inputMode="numeric" autoComplete="off" maxLength={6} value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, ""))} /></label>
+      <label>PIN for {selected.name}<input ref={pinRef} type="password" inputMode="numeric" autoComplete="off" maxLength={6} value={pin} onChange={(event) => { setPin(event.target.value.replace(/\D/g, "")); setError(/\D/.test(event.target.value) ? "The PIN is numbers only." : ""); }} /></label>
       <button className="auth-primary" disabled={pin.length < 4 || busy}>{busy ? "Checking..." : "Sign in"}</button>
     </form>}
     {error && <p className="auth-error">{error}</p>}
