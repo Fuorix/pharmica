@@ -221,4 +221,4 @@ pnpm build
 
 ## Deploying a test environment
 
-See `deploy-railway.md` for putting Pharmica online on Railway for testers.
+See `deploy-render.md` to put Pharmica online for testers for free (Render and Neon), or `deploy-railway.md` for Railway.
