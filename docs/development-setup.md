@@ -107,7 +107,7 @@ The end-to-end tests drive the real counter in Microsoft Edge against the API an
 pnpm --filter @pharmica/pos e2e
 ```
 
-There are four scenarios: offline billing (sell, void, return, restart, sync), receiving (scan a 2D code, receive with bonus, sell offline, write off, check the ledger), credit with the register (new customer, credit sale, repayment, controlled-drug sale with prescription, shift cash), the owner panel (dashboard, an expense in profit and loss, receipt settings, data export), and onboarding (an admin creates a pharmacy, the owner replaces the temporary password and adds a cashier, the counter activates, the admin records the first payment). They create and then delete their own tenants and an `e2e-admin@test.local` admin. It starts the API, POS, owner web, and admin web dev servers if they are not already running.
+There are four scenarios: offline billing (sell, void, return, restart, sync), receiving (scan a 2D code, receive with bonus, sell offline, write off, check the ledger), credit with the register (new customer, credit sale, repayment, controlled-drug sale with prescription, shift cash), the owner panel (dashboard, an expense in profit and loss, receipt settings, data export), onboarding (an admin creates a pharmacy, the owner replaces the temporary password and adds a cashier, the counter activates, the admin records the first payment), and importing opening stock (an unclear match settled by hand, the same file refused a second time). They create and then delete their own tenants and an `e2e-admin@test.local` admin. It starts the API, POS, owner web, and admin web dev servers if they are not already running.
 
 ## Owner reports (how every number is worked out)
 
@@ -163,6 +163,38 @@ Each pharmacy has one subscription on a plan: Starter, Pro, or Chain, priced per
 - **History.** Every status change, invoice, payment, extension, and plan change is written to the subscription history, which the database keeps append-only.
 - **Daily billing check.** `POST /api/v1/admin/billing/run` (the "Run billing check" button) brings every subscription up to date. Subscriptions also update whenever a shop uses Pharmica, so this only catches shops that have gone quiet; a scheduler can call it once a day.
 - Pharmacies that existed before subscriptions were moved onto a 30-day Pro trial by the migration.
+
+## Importing a shop's old records
+
+Owners use **Import data** in the owner panel. Pharmica staff can run the same import for a shop from the admin panel (pharmacy → **Import data**), which is assisted setup; the import records who ran it. There are three templates, downloadable as Excel, which together cover products, opening stock, customers, suppliers, and balances:
+
+| Template | Creates |
+| --- | --- |
+| Items and opening stock | Items (master-list medicines or the shop's own items) and batches, entered as OPENING stock movements |
+| Customers and what they owe | Customers, credit limits, and an opening-balance adjustment, dated at "owed since" so ageing is right |
+| Suppliers and what the shop owes | Suppliers and an opening-balance adjustment |
+
+**Steps.**
+1. Upload an `.xlsx` or `.csv` file (8 MB, 20,000 rows at most). Our own template headings, and the usual headings from old software ("Item Name", "Packing 10x10", "Qty", "TP", "MRP", "Batch", "Exp"), are matched to fields automatically; anything else is matched by hand.
+2. Every row is checked:
+   - **Ready**: a barcode match, an item the branch already has, a clear master-list match, or a new shop item.
+   - **Needs a decision**: several master-list medicines look alike, or the packing differs from the master entry. Matching compares words and letter patterns after normalising "TAB", "500 MG", "Syp." and so on, and medicines of different strengths are never treated as the same.
+   - **To fix**: missing name, no expiry for stock, already expired, no retail price anywhere, or a bad number or date.
+   - **Left out**: already in Pharmica.
+3. A person settles every row that needs a decision (choose a medicine, add it as a shop item, or leave it out). The import cannot be committed until they have. Rows to fix can be downloaded as CSV with the reasons, corrected, and uploaded again.
+4. **Import** commits everything in one transaction. If anything fails, nothing is changed and the reason is kept on the import.
+
+**Repeat safety.**
+- The same file (by content) can never be committed twice into the same branch; an unfinished import of the same file is resumed instead of started again.
+- At commit, a batch already on the shelf, a customer with the same mobile, or a supplier with the same name is skipped, never added twice.
+- An import can be left at any step and continued later.
+
+**Other rules.**
+- Committing an import moves the onboarding "data migration" step to in progress; staff mark it done.
+- Every upload, check, decision, commit, failed commit, and cancellation is in the audit log.
+- A blank credit limit means no limit for an imported customer (they already buy on credit); 0 means no further credit.
+
+**Abuzar.** Abuzar's item and party lists exported to Excel or CSV import through the same path; their usual headings map themselves. A converter that reads Abuzar's own database is left until after the MVP, once real sample files are available to validate against.
 
 ## Database changes
 

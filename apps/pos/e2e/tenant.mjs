@@ -58,6 +58,7 @@ async function removeTenant(organisationId) {
   await db.auditLog.deleteMany({ where: { OR: [{ organisationId }, { branchId: { in: branchIds } }, { userId: { in: userIds.map((user) => user.id) } }, { entityId: { in: userIds.map((user) => `login:${user.login}`) } }, { entityId: { startsWith: "login:e2e-pos" } }] } });
   await db.device.deleteMany({ where });
   await db.expense.deleteMany({ where });
+  await db.importJob.deleteMany({ where: { organisationId } });
   // Subscription history is append-only; test cleanup unlocks it for its own transaction only.
   await db.$transaction([
     db.$executeRawUnsafe("SET LOCAL pharmica.allow_register_purge = 'on'"),
