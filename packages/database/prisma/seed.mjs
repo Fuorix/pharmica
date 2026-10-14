@@ -10,7 +10,7 @@ const db = new PrismaClient();
 async function hash(secret) {
   const salt = randomBytes(16);
   const key = await derive(secret, salt, 64);
-  return `scrypt${salt.toString("hex")}${key.toString("hex")}`;
+  return `scrypt$${salt.toString("hex")}$${key.toString("hex")}`;
 }
 
 const credentialHash = await hash(process.env.SEED_OWNER_CREDENTIAL || "change-me-now");
