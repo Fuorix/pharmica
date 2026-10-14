@@ -1,0 +1,69 @@
+# Render Blueprint for a Pharmica test environment: the API on a free web service and the three web apps as free
+# static sites. The database is on Neon. Steps and settings: docs/deploy-render.md
+services:
+  - type: web
+    name: pharmica-api
+    runtime: node
+    plan: free
+    region: singapore
+    branch: main
+    buildCommand: bash scripts/render-build.sh api
+    startCommand: cd apps/api && ./node_modules/.bin/next start
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: PHARMICA_ALLOWED_ORIGINS
+        sync: false
+      - key: SESSION_COOKIE_SAMESITE
+        value: none
+      - key: SEED_ADMIN_CREDENTIAL
+        sync: false
+      - key: SEED_OWNER_CREDENTIAL
+        sync: false
+      - key: SEED_OWNER_PIN
+        sync: false
+      - key: SEED_CASHIER_PIN
+        sync: false
+
+  - type: web
+    name: pharmica-owner
+    runtime: static
+    branch: main
+    buildCommand: bash scripts/render-build.sh owner-web
+    staticPublishPath: apps/owner-web/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        sync: false
+
+  - type: web
+    name: pharmica-admin
+    runtime: static
+    branch: main
+    buildCommand: bash scripts/render-build.sh admin-web
+    staticPublishPath: apps/admin-web/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        sync: false
+
+  - type: web
+    name: pharmica-pos
+    runtime: static
+    branch: main
+    buildCommand: bash scripts/render-build.sh pos
+    staticPublishPath: apps/pos/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        sync: false
