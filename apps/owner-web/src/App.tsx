@@ -3,6 +3,7 @@ import { CataloguePage } from "./CataloguePage";
 import { CustomersPage } from "./CustomersPage";
 import { DashboardPage } from "./DashboardPage";
 import { ExpensesPage } from "./ExpensesPage";
+import { ImportWizard } from "./ImportWizard";
 import { PurchasesPage } from "./PurchasesPage";
 import { RegisterPage } from "./RegisterPage";
 import { ReportsPage } from "./ReportsPage";
@@ -14,11 +15,11 @@ import { InventoryPage } from "./InventoryPage";
 import { apiFetch, errorMessage, useOwnerSession } from "./session";
 import { StaffPage } from "./StaffPage";
 
-type Page = "dashboard" | "reports" | "expenses" | "inventory" | "purchases" | "suppliers" | "catalogue" | "customers" | "register" | "staff" | "settings" | "subscription";
+type Page = "dashboard" | "reports" | "expenses" | "inventory" | "purchases" | "suppliers" | "catalogue" | "customers" | "register" | "staff" | "settings" | "subscription" | "import";
 
 const PAGES: Array<[Page, string]> = [
   ["dashboard", "Today"], ["reports", "Reports"], ["expenses", "Expenses"], ["inventory", "Inventory"], ["purchases", "Purchases"], ["suppliers", "Suppliers"],
-  ["catalogue", "Catalogue"], ["customers", "Customers"], ["register", "Register"], ["staff", "Staff & devices"], ["settings", "Settings"], ["subscription", "Subscription"]
+  ["catalogue", "Catalogue"], ["customers", "Customers"], ["register", "Register"], ["staff", "Staff & devices"], ["settings", "Settings"], ["import", "Import data"], ["subscription", "Subscription"]
 ];
 /** Pages that can show every branch together. */
 const ALL_BRANCH_PAGES: Page[] = ["dashboard", "reports", "expenses"];
@@ -87,5 +88,6 @@ export function App() {
     {page === "staff" && branches.length > 0 && <StaffPage branches={branches} />}
     {page === "settings" && branch && <SettingsPage branch={branch} onSaved={loadBranches} />}
     {page === "subscription" && <SubscriptionPage onChanged={loadBilling} />}
+    {page === "import" && branches.length > 0 && <><div className="page-heading"><h1>Import data</h1></div><ImportWizard branches={branches} /></>}
   </main>;
 }

@@ -1,8 +1,9 @@
 import { FormEvent, useState } from "react";
 import type { MigrationStatus, PlanSummary, SupportView, TenantDetail } from "@pharmica/contracts";
+import { ImportWizard } from "./ImportWizard";
 import { ago, dateTime, day, Message, money, send, StatusChip, Tabs, useApi } from "./ui";
 
-type Tab = "setup" | "counters" | "subscription" | "support";
+type Tab = "setup" | "counters" | "import" | "subscription" | "support";
 
 export function TenantDetailPage({ id, onBack }: { id: string; onBack: () => void }) {
   const [tab, setTab] = useState<Tab>("setup");
@@ -29,9 +30,10 @@ export function TenantDetailPage({ id, onBack }: { id: string; onBack: () => voi
       <div className="head-side"><StatusChip status={tenant.subscription?.status ?? null} />{!tenant.isActive && <span className="chip expired">Suspended</span>}</div>
     </header>
     <Message text={message} />
-    <Tabs value={tab} onChange={setTab} options={[["setup", "Setup"], ["counters", "Counters & staff"], ["subscription", "Subscription"], ["support", "Support"]]} />
+    <Tabs value={tab} onChange={setTab} options={[["setup", "Setup"], ["counters", "Counters & staff"], ["import", "Import data"], ["subscription", "Subscription"], ["support", "Support"]]} />
     {tab === "setup" && <Setup tenant={tenant} act={act} />}
     {tab === "counters" && <Counters tenant={tenant} act={act} />}
+    {tab === "import" && <ImportWizard branches={tenant.branches} organisationId={tenant.id} />}
     {tab === "subscription" && <Subscription tenant={tenant} act={act} />}
     {tab === "support" && <Support id={tenant.id} />}
   </>;

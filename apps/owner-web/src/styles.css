@@ -109,3 +109,33 @@ button.link { background: none; color: inherit; padding: 0; text-decoration: und
 .renew-actions { margin: 14px 0; }
 .pay-how h3 { font-family: Georgia, serif; font-weight: 500; margin: 8px 0; }
 .renew-panel, .metrics + .panel { margin-bottom: 18px; }
+
+/* M10 imports */
+.imp-head { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: flex-start; margin-bottom: 14px; }
+.imp-head h2 { font-family: Georgia, serif; font-weight: 500; font-size: 28px; margin: 6px 0; }
+.imp-actions, .imp-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.imp-row select, .imp-map select { padding: 9px; border: 1px solid #d8d2c4; border-radius: 6px; background: #fff; }
+.imp-card { background: #fffdf8; border: 1px solid #ded8ca; padding: 20px; margin-bottom: 18px; }
+.imp-card h3 { font-family: Georgia, serif; font-weight: 500; margin: 0 0 10px; }
+.imp-note { color: #5f6a62; font-size: 13px; margin: 6px 0 12px; }
+.imp-message { background: #eef3ea; color: #1c563f; padding: 10px 14px; border-radius: 6px; font-size: 14px; margin: 0 0 14px; }
+.imp-message.warn { background: #f8e4dc; color: #8f3b1f; }
+.imp-counts { display: flex; flex-wrap: wrap; gap: 14px; font-size: 14px; margin-bottom: 14px; color: #5f6a62; }
+.imp-counts .ready { color: #1c563f; font-weight: 600; } .imp-counts .review { color: #8a5a1c; font-weight: 600; } .imp-counts .invalid { color: #b2512f; font-weight: 600; }
+.imp-map { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.imp-map label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: #5f6a62; }
+.imp-map small { color: #8a8f86; }
+.imp-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.imp-tabs button { background: transparent; color: #17211b; border: 1px solid #d8d2c4; padding: 7px 12px; }
+.imp-tabs button.active { background: #17211b; color: #fff; }
+.imp-table { width: 100%; border-collapse: collapse; font-size: 14px; background: #fffdf8; margin-bottom: 16px; }
+.imp-table th { text-align: left; color: #5f6a62; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; padding: 8px; border-bottom: 1px solid #e4dfd3; }
+.imp-table td { padding: 9px 8px; border-bottom: 1px solid #efeae0; vertical-align: top; }
+.imp-table td small { display: block; color: #5f6a62; font-size: 12px; margin-top: 3px; }
+.imp-decide { display: flex; flex-wrap: wrap; gap: 6px; }
+.imp-decide button { padding: 6px 10px; font-size: 13px; text-align: left; }
+.imp-decide button small { display: inline; margin-left: 4px; }
+.imp-chip { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #eef0ea; color: #4b554d; }
+.imp-chip.ready, .imp-chip.committed { background: #eef3ea; color: #1c563f; }
+.imp-chip.needs_review { background: #fbf1df; color: #8a5a1c; }
+.imp-chip.invalid { background: #f8e4dc; color: #b2512f; }

@@ -75,3 +75,32 @@ progress { width: 70px; vertical-align: middle; }
 .match-box { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
 .match-box button { text-align: left; }
 @media (max-width: 900px) { .two-col, .stats.four { grid-template-columns: 1fr; } }
+
+/* M10 imports (assisted setup) */
+.imp-head { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: flex-start; margin-bottom: 14px; }
+.imp-head h2 { font-size: 26px; margin: 6px 0; }
+.imp-actions, .imp-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.imp-card { background: #1a2921; border: 1px solid #304238; padding: 20px; margin-bottom: 18px; }
+.imp-card h3 { font-family: Georgia, serif; font-weight: 500; margin: 0 0 10px; }
+.imp-note { color: #a6b4a4; font-size: 13px; margin: 6px 0 12px; }
+.imp-message { background: #213a2a; border: 1px solid #3d6549; color: #c9efd0; padding: 10px 14px; font-size: 14px; margin: 0 0 14px; }
+.imp-message.warn { background: #3a2a1f; border-color: #8f4e33; color: #f6c4b0; }
+.imp-counts { display: flex; flex-wrap: wrap; gap: 14px; font-size: 14px; margin-bottom: 14px; color: #a6b4a4; }
+.imp-counts .ready { color: #c9efd0; } .imp-counts .review { color: #f6dcae; } .imp-counts .invalid { color: #f6c4b0; }
+.imp-map { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.imp-map label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: #a6b4a4; }
+.imp-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.imp-tabs button { background: transparent; color: #a6b4a4; border: 1px solid #304238; font-weight: 500; }
+.imp-tabs button.active { background: #e6a35d; color: #17211b; }
+.imp-table { width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 16px; }
+.imp-table th { text-align: left; color: #a6b4a4; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; padding: 8px; border-bottom: 1px solid #304238; }
+.imp-table td { padding: 9px 8px; border-bottom: 1px solid #263830; vertical-align: top; }
+.imp-table td small { display: block; color: #a6b4a4; font-size: 12px; margin-top: 3px; }
+.imp-decide { display: flex; flex-wrap: wrap; gap: 6px; }
+.imp-decide button { padding: 6px 10px; font-size: 13px; text-align: left; }
+.imp-decide button small { display: inline; margin-left: 4px; }
+.imp-chip { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; background: #304238; color: #cfd8ce; }
+.imp-chip.ready, .imp-chip.committed { background: #2e5b3f; color: #c9efd0; }
+.imp-chip.needs_review { background: #6b4b1c; color: #f6dcae; }
+.imp-chip.invalid { background: #6a2f22; color: #f6c4b0; }
+button.secondary { background: transparent; color: #eff5ee; border: 1px solid #4a5f52; font-weight: 500; }
