@@ -76,7 +76,8 @@ describe("role and tenant boundaries", () => {
     ["GET", "/api/v1/sync/issues"], ["PATCH", "/api/v1/sync/issues"], ["GET", "/api/v1/purchases"], ["POST", "/api/v1/purchases"], ["PATCH", "/api/v1/inventory"], ["GET", "/api/v1/inventory/ledger"], ["PATCH", "/api/v1/customers"], ["POST", "/api/v1/suppliers"], ["PATCH", "/api/v1/suppliers"],
     ["GET", "/api/v1/reports/dashboard"], ["GET", "/api/v1/reports/sales"], ["GET", "/api/v1/reports/profit-loss"], ["GET", "/api/v1/reports/cash-book"],
     ["GET", "/api/v1/reports/alerts"], ["GET", "/api/v1/reports/shifts"], ["GET", "/api/v1/reports/stock-health"], ["GET", "/api/v1/catalogue/price-updates"],
-    ["GET", "/api/v1/expenses"], ["POST", "/api/v1/expenses"], ["DELETE", "/api/v1/expenses"], ["GET", "/api/v1/export"], ["PATCH", "/api/v1/branches"]
+    ["GET", "/api/v1/expenses"], ["POST", "/api/v1/expenses"], ["DELETE", "/api/v1/expenses"], ["GET", "/api/v1/export"], ["PATCH", "/api/v1/branches"],
+    ["GET", "/api/v1/imports"], ["POST", "/api/v1/imports"], ["GET", "/api/v1/imports/[id]"], ["PATCH", "/api/v1/imports/[id]"], ["POST", "/api/v1/imports/[id]"], ["GET", "/api/v1/imports/[id]/problems"], ["GET", "/api/v1/imports/templates/[id]"]
   ];
 
   it.each(ownerOnly)("forbids cashiers: %s %s", async (method, path) => {

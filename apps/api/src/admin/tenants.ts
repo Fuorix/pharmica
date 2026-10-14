@@ -66,6 +66,7 @@ async function checklist(organisationId: string, now: Date): Promise<OnboardingS
     db.sale.count({ where: { branch: { organisationId } } }),
     db.subscription.findUnique({ where: { organisationId }, include: { plan: true } })
   ]);
+  const imports = await db.importJob.count({ where: { organisationId, status: "COMMITTED" } });
   const signedIn = owners.length ? await db.auditLog.count({ where: { userId: { in: owners.map((owner) => owner.id) }, action: "auth.login" } }) : 0;
   const migration = onboardingOf(organisation.onboarding).migrationStatus ?? "NOT_STARTED";
   const state = subscription ? subscriptionState({ isTrial: subscription.isTrial, paidThrough: subscription.paidThrough, cancelledAt: subscription.cancelledAt }, now) : null;
@@ -74,7 +75,7 @@ async function checklist(organisationId: string, now: Date): Promise<OnboardingS
     { key: "branch", label: "Branch address and phone for receipts", done: !!(firstBranch?.address && firstBranch.phone) },
     { key: "counter", label: "A counter is activated", done: activated > 0, detail: `${activated} activated` },
     { key: "staff", label: "Counter staff have PINs", done: staffWithPins > 0 },
-    { key: "migration", label: "Old records moved over (or not needed)", done: migration === "DONE" || migration === "NOT_NEEDED", detail: migration.replace("_", " ").toLowerCase() },
+    { key: "migration", label: "Old records moved over (or not needed)", done: migration === "DONE" || migration === "NOT_NEEDED", detail: `${migration.replace("_", " ").toLowerCase()}${imports ? ` · ${imports} import${imports === 1 ? "" : "s"} committed` : ""}` },
     { key: "stock", label: "Stock entered", done: stocked > 0, detail: `${stocked} batches in stock` },
     { key: "sale", label: "First sale reached the cloud", done: sales > 0 },
     { key: "paid", label: "First payment received", done: !!subscription && !subscription.isTrial, detail: state ? state.toLowerCase() : "no subscription" }
