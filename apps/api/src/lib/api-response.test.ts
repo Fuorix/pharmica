@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { apiError } from "./api-response";
 import { withCors } from "./cors";
 
@@ -17,6 +17,16 @@ describe("withCors", () => {
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:3002");
     expect(response.headers.get("Access-Control-Allow-Headers")).toContain("Idempotency-Key");
     expect(response.headers.get("Access-Control-Allow-Methods")).toContain("DELETE");
+  });
+
+  afterEach(() => { vi.unstubAllEnvs(); });
+
+  it("grants the hosted apps listed in PHARMICA_ALLOWED_ORIGINS", () => {
+    vi.stubEnv("PHARMICA_ALLOWED_ORIGINS", " https://owner.example.com/, https://pos.example.com ");
+    for (const origin of ["https://owner.example.com", "https://pos.example.com"]) {
+      const request = new Request("https://api.example.com/api/v1/sales", { headers: { origin } });
+      expect(withCors(new Response(null), request).headers.get("Access-Control-Allow-Origin")).toBe(origin);
+    }
   });
 
   it("does not grant unknown origins", () => {

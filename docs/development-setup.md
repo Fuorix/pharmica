@@ -218,3 +218,7 @@ pnpm typecheck
 pnpm test
 pnpm build
 ```
+
+## Deploying a test environment
+
+See `deploy-railway.md` for putting Pharmica online on Railway for testers.

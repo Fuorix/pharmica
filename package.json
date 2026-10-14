@@ -1,13 +1,19 @@
 {
   "name": "pharmica",
   "private": true,
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
     "lint": "turbo lint",
     "test": "turbo test",
     "typecheck": "turbo typecheck",
-    "clean": "turbo clean"
+    "clean": "turbo clean",
+    "railway:api:build": "pnpm --filter @pharmica/database db:generate && pnpm --filter @pharmica/api build",
+    "railway:api:predeploy": "pnpm --filter @pharmica/database db:migrate:deploy && pnpm --filter @pharmica/database db:seed",
+    "railway:api:start": "pnpm --filter @pharmica/api exec next start"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
