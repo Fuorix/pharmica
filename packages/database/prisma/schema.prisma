@@ -916,3 +916,93 @@ model MasterProductMerge {
 
   @@index([keptId])
 }
+
+// ---------- data migration (M10) ----------
+
+enum ImportKind {
+  /// Items with their opening stock by batch.
+  STOCK
+  /// Customers with credit limits and what they owe.
+  CUSTOMERS
+  /// Suppliers with what the shop owes them.
+  SUPPLIERS
+}
+
+enum ImportStatus {
+  /// Uploaded; columns are being matched to fields.
+  MAPPING
+  /// Rows checked; waiting for a person to settle anything unclear, then commit.
+  REVIEW
+  COMMITTED
+  CANCELLED
+}
+
+enum ImportRowStatus {
+  /// Will be imported as decided.
+  READY
+  /// Unclear (for example several possible medicines); a person must decide before the import can commit.
+  NEEDS_REVIEW
+  /// Cannot be imported as it stands (missing or bad values); left out.
+  INVALID
+  /// Left out on purpose, e.g. already in Pharmica.
+  SKIPPED
+  COMMITTED
+}
+
+/// One upload of a shop's old records. Saved at every step, so an import can be left and resumed; it commits in a
+/// single transaction, so a failure changes nothing.
+model ImportJob {
+  id             String       @id @default(cuid())
+  organisationId String
+  branchId       String
+  kind           ImportKind
+  status         ImportStatus @default(MAPPING)
+  fileName       String
+  /// SHA-256 of the file, so the same file is never imported twice into a branch.
+  fileHash       String
+  headers        String[]
+  /// Field name to column header.
+  columnMap      Json?
+  rowCount       Int          @default(0)
+  createdById    String
+  committedById  String?
+  committedAt    DateTime?
+  cancelledAt    DateTime?
+  lastError      String?
+  summary        Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  rows           ImportRow[]
+
+  @@index([branchId, kind, fileHash])
+  @@index([organisationId, createdAt])
+}
+
+model ImportRow {
+  id              String          @id @default(cuid())
+  jobId           String
+  /// Spreadsheet line number, counting the header as line 1.
+  line            Int
+  /// The cells as uploaded, by column header.
+  raw             Json
+  /// The row read through the column map: names, numbers, and dates as Pharmica will store them.
+  data            Json?
+  status          ImportRowStatus @default(READY)
+  problems        String[]        @default([])
+  /// STOCK: MASTER (a master-list medicine), EXISTING (an item the branch already has), NEW (a new shop item), SKIP.
+  /// CUSTOMERS and SUPPLIERS: CREATE or SKIP.
+  action          String?
+  masterProductId String?
+  productId       String?
+  score           Float?
+  /// Up to three suggested master-list medicines with their similarity.
+  candidates      Json?
+  decidedById     String?
+  decidedAt       DateTime?
+  /// What the commit created, for the audit trail.
+  result          Json?
+  job             ImportJob       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, line])
+  @@index([jobId, status])
+}

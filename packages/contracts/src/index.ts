@@ -956,3 +956,88 @@ export interface AdminOverview {
   collectedThisMonth: number;
   queue: { priceReports: number; priceLists: number; unmatchedPayments: number; overdueShops: number; syncProblems: number; onboarding: number };
 }
+
+// ---------- data migration (M10) ----------
+
+export type ImportKind = "STOCK" | "CUSTOMERS" | "SUPPLIERS";
+export type ImportStatus = "MAPPING" | "REVIEW" | "COMMITTED" | "CANCELLED";
+export type ImportRowStatus = "READY" | "NEEDS_REVIEW" | "INVALID" | "SKIPPED" | "COMMITTED";
+
+export interface ImportField {
+  key: string;
+  label: string;
+  required: boolean;
+  hint?: string;
+}
+
+export interface ImportCounts {
+  ready: number;
+  needsReview: number;
+  invalid: number;
+  skipped: number;
+  committed: number;
+}
+
+export interface ImportJobSummary {
+  id: string;
+  kind: ImportKind;
+  kindLabel: string;
+  status: ImportStatus;
+  fileName: string;
+  organisationId: string;
+  branchId: string;
+  branchName: string;
+  rowCount: number;
+  counts: ImportCounts;
+  createdBy: string;
+  createdAt: string;
+  committedBy: string | null;
+  committedAt: string | null;
+  lastError: string | null;
+  /** After commit: what was created. */
+  summary: Record<string, number> | null;
+}
+
+export interface ImportCandidate {
+  id: string;
+  name: string;
+  company: string | null;
+  packing: string;
+  officialRetailPrice: number | null;
+  score: number;
+}
+
+export interface ImportRowItem {
+  id: string;
+  line: number;
+  status: ImportRowStatus;
+  problems: string[];
+  action: string | null;
+  raw: Record<string, string>;
+  data: Record<string, unknown> | null;
+  masterProductId: string | null;
+  masterName: string | null;
+  productId: string | null;
+  productName: string | null;
+  score: number | null;
+  candidates: ImportCandidate[];
+  decidedBy: string | null;
+}
+
+export interface ImportJobDetail {
+  job: ImportJobSummary;
+  headers: string[];
+  columnMap: Record<string, string>;
+  fields: ImportField[];
+  rows: ImportRowItem[];
+  /** Rows matching the filter, for paging. */
+  total: number;
+}
+
+export interface ImportDecision {
+  rowId: string;
+  /** STOCK: MASTER, EXISTING, NEW, or SKIP. CUSTOMERS and SUPPLIERS: CREATE or SKIP. */
+  action: string;
+  masterProductId?: string;
+  productId?: string;
+}
