@@ -1,0 +1,1008 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Organisation {
+  id           String                @id @default(cuid())
+  name         String
+  /// A suspended tenant cannot sign in or sync. Set by Pharmica staff only; not used for unpaid subscriptions.
+  isActive     Boolean               @default(true)
+  contactName  String?
+  phone        String?
+  city         String?
+  /// Onboarding notes kept by Pharmica staff, e.g. the data migration status.
+  onboarding   Json?
+  createdAt    DateTime              @default(now())
+  branches     Branch[]
+  users        User[]
+  auditLogs    AuditLog[]
+  subscription Subscription?
+  invoices     SubscriptionInvoice[]
+  payments     SubscriptionPayment[]
+}
+
+model Branch {
+  id                    String                 @id @default(cuid())
+  organisationId        String
+  name                  String
+  address               String?
+  phone                 String?
+  /// Owner settings: receipt header and footer, near-expiry and overdue windows, default paper width.
+  settings              Json?
+  organisation          Organisation           @relation(fields: [organisationId], references: [id])
+  users                 User[]
+  expenses              Expense[]
+  devices               Device[]
+  products              Product[]
+  sales                 Sale[]
+  shifts                Shift[]
+  heldBills             HeldBill[]
+  suppliers             Supplier[]
+  purchases             Purchase[]
+  stockMovements        StockMovement[]
+  priceReports          PriceChangeReport[]
+  customers             Customer[]
+  customerLedger        CustomerLedgerEntry[]
+  supplierLedger        SupplierLedgerEntry[]
+  controlledDrugRecords ControlledDrugRecord[]
+}
+
+model User {
+  id                    String                 @id @default(cuid())
+  organisationId        String?
+  branchId              String?
+  name                  String
+  login                 String                 @unique
+  credentialHash        String?
+  pinHash               String?
+  role                  UserRole
+  /// Largest discount a cashier may give, as a percent of the bill. Owners are not limited.
+  maxDiscountPercent    Int                    @default(0)
+  /// Set when Pharmica staff create the account with a temporary password.
+  mustChangeCredential  Boolean                @default(false)
+  isActive              Boolean                @default(true)
+  createdAt             DateTime               @default(now())
+  organisation          Organisation?          @relation(fields: [organisationId], references: [id])
+  branch                Branch?                @relation(fields: [branchId], references: [id])
+  sessions              Session[]
+  auditLogs             AuditLog[]
+  sales                 Sale[]
+  shifts                Shift[]
+  heldBills             HeldBill[]
+  purchases             Purchase[]
+  stockMovements        StockMovement[]
+  customerLedger        CustomerLedgerEntry[]
+  supplierLedger        SupplierLedgerEntry[]
+  controlledDrugRecords ControlledDrugRecord[]
+  saleReturns           SaleReturn[]
+  expenses              Expense[]
+}
+
+enum UserRole {
+  OWNER
+  CASHIER
+  SUPER_ADMIN
+}
+
+model Device {
+  id             String          @id @default(cuid())
+  branchId       String
+  name           String
+  activationCode String          @unique
+  secretHash     String?
+  activatedAt    DateTime?
+  isActive       Boolean         @default(true)
+  lastSeenAt     DateTime?
+  createdAt      DateTime        @default(now())
+  /// Sync health the counter last reported (queue sizes, last error, app version) for support.
+  diagnostics    Json?
+  diagnosticsAt  DateTime?
+  branch         Branch          @relation(fields: [branchId], references: [id])
+  syncOperations SyncOperation[]
+  sessions       Session[]
+}
+
+model SyncOperation {
+  idempotencyKey String              @id
+  deviceId       String
+  branchId       String
+  entityType     String
+  payload        Json
+  status         SyncOperationStatus @default(PENDING)
+  retryCount     Int                 @default(0)
+  errorMessage   String?
+  /// Accepted, but something the owner should review (e.g. OVERSOLD, CREDIT_LIMIT_EXCEEDED).
+  flags          String[]            @default([])
+  /// When the counter says the operation happened.
+  occurredAt     DateTime?
+  userId         String?
+  /// Set when the owner has looked at a flagged or rejected operation.
+  reviewedAt     DateTime?
+  reviewedById   String?
+  reviewNote     String?
+  nextAttemptAt  DateTime?
+  createdAt      DateTime            @default(now())
+  processedAt    DateTime?
+  device         Device              @relation(fields: [deviceId], references: [id])
+
+  @@index([deviceId, createdAt])
+  @@index([branchId, status])
+}
+
+enum SyncOperationStatus {
+  PENDING
+  APPLIED
+  CONFLICT
+  FAILED
+}
+
+model Session {
+  id        String    @id @default(cuid())
+  userId    String
+  deviceId  String?
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device    Device?   @relation(fields: [deviceId], references: [id])
+}
+
+model AuditLog {
+  id             String        @id @default(cuid())
+  organisationId String?
+  branchId       String?
+  userId         String?
+  action         String
+  entityType     String
+  entityId       String?
+  metadata       Json?
+  createdAt      DateTime      @default(now())
+  organisation   Organisation? @relation(fields: [organisationId], references: [id])
+  user           User?         @relation(fields: [userId], references: [id])
+
+  @@index([action, entityId, createdAt])
+}
+
+model Product {
+  id                    String                 @id @default(cuid())
+  branchId              String
+  masterProductId       String?
+  name                  String
+  barcode               String?
+  generic               String?
+  /// Company for shop-specific items; master items use the master company.
+  company               String?
+  category              ProductCategory        @default(MEDICINE)
+  /// Pack structure for shop-specific items; master items use the master values.
+  unitsPerPack          Int?
+  tabletsPerStrip       Int?
+  rackLocation          String?
+  /// Shop price per pack. It can only lower the batch retail price, never raise it.
+  retailPriceOverride   Decimal?               @db.Decimal(12, 2)
+  isShopSpecific        Boolean                @default(false)
+  isActive              Boolean                @default(true)
+  /// Low-stock alert level in packs; 0 turns the alert off.
+  lowStockThreshold     Int                    @default(0)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  branch                Branch                 @relation(fields: [branchId], references: [id])
+  masterProduct         MasterProduct?         @relation(fields: [masterProductId], references: [id])
+  batches               Batch[]
+  saleLines             SaleLine[]
+  purchaseLines         PurchaseLine[]
+  stockMovements        StockMovement[]
+  priceReports          PriceChangeReport[]
+  controlledDrugRecords ControlledDrugRecord[]
+
+  @@unique([branchId, barcode])
+  @@unique([branchId, masterProductId])
+  @@index([branchId, name])
+  @@index([masterProductId])
+}
+
+model MasterProduct {
+  id                  String               @id @default(cuid())
+  name                String
+  brand               String?
+  generic             String?
+  company             String?
+  dosageForm          String?
+  strength            String?
+  drapRegistrationNo  String?              @unique
+  barcode             String?              @unique
+  /// Strips (or bottles, tubes) per pack.
+  unitsPerPack        Int                  @default(1)
+  /// Tablets per strip; 1 for items that cannot be split.
+  tabletsPerStrip     Int                  @default(1)
+  officialRetailPrice Decimal?             @db.Decimal(12, 2)
+  isPrescriptionOnly  Boolean              @default(false)
+  isControlled        Boolean              @default(false)
+  source              String?
+  /// Set when this entry was merged into another as a duplicate; it is then hidden everywhere.
+  mergedIntoId        String?
+  mergedInto          MasterProduct?       @relation("MasterMerge", fields: [mergedIntoId], references: [id])
+  mergedFrom          MasterProduct[]      @relation("MasterMerge")
+  createdAt           DateTime             @default(now())
+  /// Counters download the master list in pages ordered by (updatedAt, id) and resume from the last one.
+  updatedAt           DateTime             @updatedAt
+  products            Product[]
+  priceHistory        MasterPriceHistory[]
+
+  @@index([name])
+  @@index([updatedAt, id])
+  @@index([generic])
+  @@index([company])
+}
+
+model MasterPriceHistory {
+  id              String        @id @default(cuid())
+  masterProductId String
+  price           Decimal       @db.Decimal(12, 2)
+  effectiveFrom   DateTime
+  /// SRO, COMPANY_PRICE_LIST, DISTRIBUTOR_INVOICE, SHOP_REPORT, DRAP_IMPORT, or MANUAL.
+  source          String
+  /// The SRO number, price-list name, or invoice the price came from.
+  reference       String?
+  recordedById    String?
+  createdAt       DateTime      @default(now())
+  masterProduct   MasterProduct @relation(fields: [masterProductId], references: [id], onDelete: Cascade)
+
+  @@index([masterProductId, effectiveFrom])
+}
+
+model Batch {
+  id                String              @id @default(cuid())
+  productId         String
+  batchNo           String
+  expiryDate        DateTime
+  /// Stock on hand in base units (single tablets, or single packs for unsplittable items).
+  /// Always equals the sum of this batch's stock movements.
+  quantity          Int                 @default(0)
+  costPrice         Decimal?            @db.Decimal(12, 2)
+  retailPrice       Decimal             @db.Decimal(12, 2)
+  serialNumber      String?
+  retailPriceSource String?
+  createdAt         DateTime            @default(now())
+  product           Product             @relation(fields: [productId], references: [id])
+  purchaseLines     PurchaseLine[]
+  stockMovements    StockMovement[]
+  saleLines         SaleLine[]
+  priceReports      PriceChangeReport[]
+
+  @@unique([productId, batchNo])
+  @@index([productId, expiryDate])
+}
+
+model Supplier {
+  id        String                @id @default(cuid())
+  branchId  String
+  name      String
+  phone     String?
+  address   String?
+  isActive  Boolean               @default(true)
+  createdAt DateTime              @default(now())
+  branch    Branch                @relation(fields: [branchId], references: [id])
+  purchases Purchase[]
+  ledger    SupplierLedgerEntry[]
+
+  @@unique([branchId, name])
+  @@index([branchId])
+}
+
+model Purchase {
+  id            String                @id @default(cuid())
+  branchId      String
+  supplierId    String
+  userId        String
+  /// Set when the purchase was received on a POS device.
+  deviceId      String?
+  invoiceNumber String?
+  invoiceDate   DateTime?
+  /// Sum of line amounts before discounts.
+  subtotal      Decimal               @db.Decimal(12, 2)
+  /// Sum of the line trade discounts.
+  lineDiscount  Decimal               @default(0) @db.Decimal(12, 2)
+  /// Discount on the whole invoice.
+  tradeDiscount Decimal               @default(0) @db.Decimal(12, 2)
+  bonusPacks    Int                   @default(0)
+  total         Decimal               @db.Decimal(12, 2)
+  receivedAt    DateTime              @default(now())
+  branch        Branch                @relation(fields: [branchId], references: [id])
+  supplier      Supplier              @relation(fields: [supplierId], references: [id])
+  user          User                  @relation(fields: [userId], references: [id])
+  lines         PurchaseLine[]
+  ledgerEntries SupplierLedgerEntry[]
+  priceReports  PriceChangeReport[]
+
+  @@index([branchId, receivedAt])
+  @@index([supplierId, invoiceNumber])
+}
+
+model PurchaseLine {
+  id              String   @id @default(cuid())
+  purchaseId      String
+  productId       String
+  batchId         String
+  quantity        Int
+  bonusQuantity   Int      @default(0)
+  /// Invoice price per pack, before discounts.
+  costPrice       Decimal  @db.Decimal(12, 2)
+  retailPrice     Decimal  @db.Decimal(12, 2)
+  /// Trade discount on this line in PKR.
+  tradeDiscount   Decimal  @default(0) @db.Decimal(12, 2)
+  /// This line's share of the invoice discount.
+  invoiceDiscount Decimal  @default(0) @db.Decimal(12, 2)
+  /// Real cost per pack after all discounts, spread over paid and bonus packs.
+  effectiveCost   Decimal  @default(0) @db.Decimal(12, 2)
+  serialNumber    String?
+  purchase        Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product         Product  @relation(fields: [productId], references: [id])
+  batch           Batch    @relation(fields: [batchId], references: [id])
+}
+
+model StockMovement {
+  id          String            @id @default(cuid())
+  branchId    String
+  productId   String
+  batchId     String?
+  /// Null for movements the system recorded itself, such as opening balances.
+  userId      String?
+  type        StockMovementType
+  quantity    Int
+  reason      String?
+  referenceId String?
+  createdAt   DateTime          @default(now())
+  branch      Branch            @relation(fields: [branchId], references: [id])
+  product     Product           @relation(fields: [productId], references: [id])
+  batch       Batch?            @relation(fields: [batchId], references: [id])
+  user        User?             @relation(fields: [userId], references: [id])
+
+  @@index([branchId, createdAt])
+  @@index([productId, batchId])
+  @@index([batchId])
+}
+
+enum StockMovementType {
+  OPENING
+  RECEIPT
+  COUNT
+  SALE
+  SALE_RETURN
+  ADJUSTMENT
+  WRITE_OFF
+  DAMAGE
+  EXPIRY
+  RETURN_TO_SUPPLIER
+}
+
+model PriceChangeReport {
+  id           String            @id @default(cuid())
+  branchId     String
+  productId    String
+  /// Official master price at the time, or the shop price for items not on the master list.
+  oldPrice     Decimal           @db.Decimal(12, 2)
+  /// Retail price printed on the received batch.
+  newPrice     Decimal           @db.Decimal(12, 2)
+  source       String
+  batchId      String?
+  purchaseId   String?
+  reportedById String?
+  status       PriceReportStatus @default(PENDING)
+  reviewedById String?
+  reviewedAt   DateTime?
+  reviewNote   String?
+  createdAt    DateTime          @default(now())
+  branch       Branch            @relation(fields: [branchId], references: [id])
+  product      Product           @relation(fields: [productId], references: [id])
+  batch        Batch?            @relation(fields: [batchId], references: [id])
+  purchase     Purchase?         @relation(fields: [purchaseId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([branchId, productId])
+}
+
+enum PriceReportStatus {
+  PENDING
+  REVIEWED
+  PUBLISHED
+  DISMISSED
+}
+
+model Sale {
+  id                    String                 @id @default(cuid())
+  branchId              String
+  userId                String
+  customerId            String?
+  idempotencyKey        String?                @unique
+  /// Set for sales recorded on a POS device, which numbers its own receipts.
+  deviceId              String?
+  shiftId               String?
+  receiptNo             String?
+  subtotal              Decimal                @db.Decimal(12, 2)
+  discount              Decimal                @default(0) @db.Decimal(12, 2)
+  total                 Decimal                @db.Decimal(12, 2)
+  paymentMethod         PaymentMethod
+  status                SaleStatus             @default(COMPLETED)
+  voidedAt              DateTime?
+  voidedById            String?
+  voidReason            String?
+  createdAt             DateTime               @default(now())
+  /// When the server received it; differs from createdAt for sales made offline.
+  receivedAt            DateTime               @default(now())
+  branch                Branch                 @relation(fields: [branchId], references: [id])
+  user                  User                   @relation(fields: [userId], references: [id])
+  customer              Customer?              @relation(fields: [customerId], references: [id])
+  shift                 Shift?                 @relation(fields: [shiftId], references: [id])
+  lines                 SaleLine[]
+  returns               SaleReturn[]
+  controlledDrugRecords ControlledDrugRecord[]
+
+  @@unique([branchId, receiptNo])
+  @@index([branchId, createdAt])
+  @@index([shiftId])
+}
+
+model Customer {
+  id          String                @id @default(cuid())
+  branchId    String
+  name        String
+  phone       String?
+  /// Most this customer may owe on credit. 0 (the default) allows no credit; null means no limit.
+  creditLimit Decimal?              @default(0) @db.Decimal(12, 2)
+  isActive    Boolean               @default(true)
+  createdAt   DateTime              @default(now())
+  branch      Branch                @relation(fields: [branchId], references: [id])
+  sales       Sale[]
+  ledger      CustomerLedgerEntry[]
+
+  @@unique([branchId, phone])
+  @@index([branchId, name])
+}
+
+model CustomerLedgerEntry {
+  id            String             @id @default(cuid())
+  branchId      String
+  customerId    String
+  userId        String
+  type          CustomerLedgerType
+  /// Always positive, except ADJUSTMENT, whose sign says whether it adds to or reduces what is owed.
+  amount        Decimal            @db.Decimal(12, 2)
+  /// How a PAYMENT was made (cash counts in the shift's drawer).
+  paymentMethod PaymentMethod?
+  deviceId      String?
+  shiftId       String?
+  note          String?
+  saleId        String?
+  createdAt     DateTime           @default(now())
+  branch        Branch             @relation(fields: [branchId], references: [id])
+  customer      Customer           @relation(fields: [customerId], references: [id])
+  user          User               @relation(fields: [userId], references: [id])
+
+  @@index([customerId, createdAt])
+}
+
+enum CustomerLedgerType {
+  CREDIT_SALE
+  PAYMENT
+  ADJUSTMENT
+  CREDIT_RETURN
+}
+
+model SupplierLedgerEntry {
+  id         String             @id @default(cuid())
+  branchId   String
+  supplierId String
+  userId     String
+  type       SupplierLedgerType
+  /// Always positive, except ADJUSTMENT, whose sign says whether it adds to or reduces what is owed.
+  amount     Decimal            @db.Decimal(12, 2)
+  /// How a PAYMENT was made: cash, bank transfer, or cheque.
+  method     String?
+  /// Cheque number, bank transaction id, or similar.
+  reference  String?
+  note       String?
+  purchaseId String?
+  createdAt  DateTime           @default(now())
+  branch     Branch             @relation(fields: [branchId], references: [id])
+  supplier   Supplier           @relation(fields: [supplierId], references: [id])
+  user       User               @relation(fields: [userId], references: [id])
+  purchase   Purchase?          @relation(fields: [purchaseId], references: [id])
+
+  @@index([supplierId, createdAt])
+}
+
+enum SupplierLedgerType {
+  PURCHASE
+  PAYMENT
+  ADJUSTMENT
+}
+
+/// Narcotics register. Entries are written only by sales (and their voids or returns) and can never be
+/// changed or deleted: a database trigger rejects UPDATE and DELETE. Corrections are new REVERSAL entries.
+model ControlledDrugRecord {
+  id              String              @id @default(cuid())
+  branchId        String
+  userId          String
+  deviceId        String?
+  entryType       ControlledEntryType @default(ENTRY)
+  saleId          String?
+  saleLineId      String?
+  /// For a REVERSAL: the entry it reverses.
+  reversesId      String?
+  productId       String
+  batchId         String?
+  unit            SaleUnit            @default(PACK)
+  /// Units in `unit`; negative for a REVERSAL.
+  quantity        Int
+  patientName     String
+  patientPhone    String?
+  doctorName      String
+  /// PMDC or other registration number of the prescribing doctor.
+  doctorRegNo     String?
+  /// Prescription number or reference written on the slip.
+  prescriptionRef String?
+  notes           String?
+  createdAt       DateTime            @default(now())
+  branch          Branch              @relation(fields: [branchId], references: [id])
+  user            User                @relation(fields: [userId], references: [id])
+  sale            Sale?               @relation(fields: [saleId], references: [id])
+  product         Product             @relation(fields: [productId], references: [id])
+
+  @@index([branchId, createdAt])
+  @@index([saleId])
+}
+
+enum ControlledEntryType {
+  ENTRY
+  REVERSAL
+}
+
+model Shift {
+  id            String      @id @default(cuid())
+  branchId      String
+  userId        String
+  deviceId      String?
+  status        ShiftStatus @default(OPEN)
+  openingCash   Decimal     @db.Decimal(12, 2)
+  closingCash   Decimal?    @db.Decimal(12, 2)
+  /// End-of-day figures computed at the counter when the shift closed.
+  closingReport Json?
+  openedAt      DateTime    @default(now())
+  closedAt      DateTime?
+  branch        Branch      @relation(fields: [branchId], references: [id])
+  user          User        @relation(fields: [userId], references: [id])
+  sales         Sale[]
+
+  @@index([branchId, status])
+}
+
+enum ShiftStatus {
+  OPEN
+  CLOSED
+}
+
+model HeldBill {
+  id        String   @id @default(cuid())
+  branchId  String
+  userId    String
+  label     String?
+  payload   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  branch    Branch   @relation(fields: [branchId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([branchId, updatedAt])
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  CREDIT
+}
+
+enum SaleStatus {
+  COMPLETED
+  VOIDED
+  RETURNED
+}
+
+model SaleLine {
+  id          String           @id @default(cuid())
+  saleId      String
+  productId   String
+  batchId     String?
+  quantity    Int
+  unit        SaleUnit
+  unitPrice   Decimal          @db.Decimal(12, 2)
+  discount    Decimal          @default(0) @db.Decimal(12, 2)
+  lineTotal   Decimal          @db.Decimal(12, 2)
+  /// What one sold unit cost the shop when it was sold (the batch's real cost), so profit never changes later.
+  /// Null for early sales whose cost is unknown.
+  unitCost    Decimal?         @db.Decimal(12, 4)
+  sale        Sale             @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product     Product          @relation(fields: [productId], references: [id])
+  batch       Batch?           @relation(fields: [batchId], references: [id])
+  returnLines SaleReturnLine[]
+
+  @@index([saleId])
+  @@index([productId])
+}
+
+enum SaleUnit {
+  PACK
+  STRIP
+  TABLET
+}
+
+enum ProductCategory {
+  MEDICINE
+  COSMETIC
+  SURGICAL
+  BABY
+  GENERAL
+}
+
+/// Goods brought back against a sale. Stock goes back to the batch it was sold from.
+model SaleReturn {
+  id           String           @id @default(cuid())
+  saleId       String
+  branchId     String
+  userId       String
+  deviceId     String?
+  reason       String
+  refundMethod PaymentMethod
+  refundAmount Decimal          @db.Decimal(12, 2)
+  createdAt    DateTime         @default(now())
+  sale         Sale             @relation(fields: [saleId], references: [id])
+  user         User             @relation(fields: [userId], references: [id])
+  lines        SaleReturnLine[]
+
+  @@index([branchId, createdAt])
+  @@index([saleId])
+}
+
+model SaleReturnLine {
+  id         String     @id @default(cuid())
+  returnId   String
+  saleLineId String
+  quantity   Int
+  amount     Decimal    @db.Decimal(12, 2)
+  saleReturn SaleReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  saleLine   SaleLine   @relation(fields: [saleLineId], references: [id])
+
+  @@index([saleLineId])
+}
+
+/// Money the shop spends that is not stock: rent, salaries, electricity, and so on.
+model Expense {
+  id        String   @id @default(cuid())
+  branchId  String
+  userId    String
+  category  String
+  amount    Decimal  @db.Decimal(12, 2)
+  /// cash (comes out of the drawer) or bank.
+  paidFrom  String   @default("cash")
+  note      String?
+  spentAt   DateTime @default(now())
+  createdAt DateTime @default(now())
+  branch    Branch   @relation(fields: [branchId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([branchId, spentAt])
+}
+
+// ---------- subscriptions (M9) ----------
+
+/// What a pharmacy pays for. Prices are per month; longer prepaid periods get the plan's discount.
+model Plan {
+  id                       String                @id @default(cuid())
+  code                     String                @unique
+  name                     String
+  monthlyPrice             Decimal               @db.Decimal(12, 2)
+  quarterlyDiscountPercent Int                   @default(0)
+  yearlyDiscountPercent    Int                   @default(0)
+  /// null means no limit.
+  maxBranches              Int?
+  maxDevices               Int?
+  /// Feature keys, e.g. reports, accounting, mobile.
+  features                 String[]              @default([])
+  trialDays                Int                   @default(14)
+  isActive                 Boolean               @default(true)
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
+  subscriptions            Subscription[]
+  invoices                 SubscriptionInvoice[]
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  GRACE
+  EXPIRED
+  CANCELLED
+}
+
+enum BillingPeriod {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+/// One per organisation. The status is always recomputed from the dates (see @pharmica/domain subscription rules);
+/// the stored value is the last computed one, and every change is written to SubscriptionEvent.
+model Subscription {
+  id              String                @id @default(cuid())
+  organisationId  String                @unique
+  planId          String
+  period          BillingPeriod         @default(MONTHLY)
+  status          SubscriptionStatus    @default(TRIAL)
+  /// True until the first paid invoice.
+  isTrial         Boolean               @default(true)
+  /// Trial end, or the end of the last paid period.
+  paidThrough     DateTime
+  cancelledAt     DateTime?
+  statusChangedAt DateTime              @default(now())
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  organisation    Organisation          @relation(fields: [organisationId], references: [id])
+  plan            Plan                  @relation(fields: [planId], references: [id])
+  events          SubscriptionEvent[]
+  invoices        SubscriptionInvoice[]
+
+  @@index([status, paidThrough])
+}
+
+/// Append-only history of every subscription change: status transitions, plan changes, extensions, payments.
+model SubscriptionEvent {
+  id             String              @id @default(cuid())
+  subscriptionId String
+  type           String
+  fromStatus     SubscriptionStatus?
+  toStatus       SubscriptionStatus?
+  actorId        String?
+  reason         String?
+  metadata       Json?
+  createdAt      DateTime            @default(now())
+  subscription   Subscription        @relation(fields: [subscriptionId], references: [id])
+
+  @@index([subscriptionId, createdAt])
+}
+
+enum InvoiceStatus {
+  OPEN
+  PAID
+  VOID
+}
+
+model SubscriptionInvoice {
+  id             String                @id @default(cuid())
+  /// PH-2026-000123
+  number         String                @unique
+  organisationId String
+  subscriptionId String
+  planId         String
+  period         BillingPeriod
+  months         Int
+  periodStart    DateTime
+  periodEnd      DateTime
+  subtotal       Decimal               @db.Decimal(12, 2)
+  discount       Decimal               @default(0) @db.Decimal(12, 2)
+  total          Decimal               @db.Decimal(12, 2)
+  status         InvoiceStatus         @default(OPEN)
+  issuedAt       DateTime              @default(now())
+  dueAt          DateTime
+  paidAt         DateTime?
+  voidedAt       DateTime?
+  voidReason     String?
+  organisation   Organisation          @relation(fields: [organisationId], references: [id])
+  subscription   Subscription          @relation(fields: [subscriptionId], references: [id])
+  plan           Plan                  @relation(fields: [planId], references: [id])
+  payments       SubscriptionPayment[]
+
+  @@index([organisationId, issuedAt])
+  @@index([status, dueAt])
+}
+
+enum SubscriptionPaymentMethod {
+  CASH
+  BANK_TRANSFER
+  JAZZCASH
+  EASYPAISA
+  RAAST
+}
+
+enum SubscriptionPaymentStatus {
+  SUCCEEDED
+  FAILED
+  /// Received but could not be matched to an invoice (wrong amount or unknown invoice); needs a person.
+  UNMATCHED
+}
+
+model SubscriptionPayment {
+  id                    String                    @id @default(cuid())
+  organisationId        String?
+  invoiceId             String?
+  method                SubscriptionPaymentMethod
+  status                SubscriptionPaymentStatus @default(SUCCEEDED)
+  amount                Decimal                   @db.Decimal(12, 2)
+  /// Receipt book number, bank reference, or the provider's reference shown to the shop.
+  reference             String?
+  /// The payment provider's own transaction ID; unique per provider so a repeated callback is applied once.
+  providerTransactionId String?
+  note                  String?
+  raw                   Json?
+  recordedById          String?
+  receivedAt            DateTime                  @default(now())
+  createdAt             DateTime                  @default(now())
+  organisation          Organisation?             @relation(fields: [organisationId], references: [id])
+  invoice               SubscriptionInvoice?      @relation(fields: [invoiceId], references: [id])
+
+  @@unique([method, providerTransactionId])
+  @@index([organisationId, receivedAt])
+}
+
+// ---------- catalogue curation (M8) ----------
+
+enum PriceListStatus {
+  REVIEW
+  PUBLISHED
+  REJECTED
+}
+
+enum PriceListMatch {
+  MATCHED
+  UNCHANGED
+  NOT_FOUND
+  AMBIGUOUS
+  INVALID
+}
+
+/// An SRO, company price list, or DRAP file uploaded by Pharmica staff. Nothing reaches shops until it is published.
+model PriceListUpload {
+  id            String          @id @default(cuid())
+  source        String
+  reference     String
+  fileName      String?
+  effectiveFrom DateTime
+  status        PriceListStatus @default(REVIEW)
+  uploadedById  String
+  reviewedById  String?
+  reviewedAt    DateTime?
+  reviewNote    String?
+  createdAt     DateTime        @default(now())
+  rows          PriceListRow[]
+
+  @@index([status, createdAt])
+}
+
+model PriceListRow {
+  id              String          @id @default(cuid())
+  uploadId        String
+  line            Int
+  name            String
+  barcode         String?
+  registrationNo  String?
+  price           Decimal?        @db.Decimal(12, 2)
+  masterProductId String?
+  /// The master price in force when the file was checked.
+  currentPrice    Decimal?        @db.Decimal(12, 2)
+  match           PriceListMatch
+  approved        Boolean         @default(true)
+  problem         String?
+  upload          PriceListUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  @@index([uploadId, line])
+}
+
+/// Audit trail of duplicate master products merged into one.
+model MasterProductMerge {
+  id                     String   @id @default(cuid())
+  keptId                 String
+  mergedId               String
+  mergedName             String
+  performedById          String
+  reason                 String?
+  branchProductsRelinked Int      @default(0)
+  branchProductsUnlinked Int      @default(0)
+  details                Json?
+  createdAt              DateTime @default(now())
+
+  @@index([keptId])
+}
+
+// ---------- data migration (M10) ----------
+
+enum ImportKind {
+  /// Items with their opening stock by batch.
+  STOCK
+  /// Customers with credit limits and what they owe.
+  CUSTOMERS
+  /// Suppliers with what the shop owes them.
+  SUPPLIERS
+}
+
+enum ImportStatus {
+  /// Uploaded; columns are being matched to fields.
+  MAPPING
+  /// Rows checked; waiting for a person to settle anything unclear, then commit.
+  REVIEW
+  COMMITTED
+  CANCELLED
+}
+
+enum ImportRowStatus {
+  /// Will be imported as decided.
+  READY
+  /// Unclear (for example several possible medicines); a person must decide before the import can commit.
+  NEEDS_REVIEW
+  /// Cannot be imported as it stands (missing or bad values); left out.
+  INVALID
+  /// Left out on purpose, e.g. already in Pharmica.
+  SKIPPED
+  COMMITTED
+}
+
+/// One upload of a shop's old records. Saved at every step, so an import can be left and resumed; it commits in a
+/// single transaction, so a failure changes nothing.
+model ImportJob {
+  id             String       @id @default(cuid())
+  organisationId String
+  branchId       String
+  kind           ImportKind
+  status         ImportStatus @default(MAPPING)
+  fileName       String
+  /// SHA-256 of the file, so the same file is never imported twice into a branch.
+  fileHash       String
+  headers        String[]
+  /// Field name to column header.
+  columnMap      Json?
+  rowCount       Int          @default(0)
+  createdById    String
+  committedById  String?
+  committedAt    DateTime?
+  cancelledAt    DateTime?
+  lastError      String?
+  summary        Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  rows           ImportRow[]
+
+  @@index([branchId, kind, fileHash])
+  @@index([organisationId, createdAt])
+}
+
+model ImportRow {
+  id              String          @id @default(cuid())
+  jobId           String
+  /// Spreadsheet line number, counting the header as line 1.
+  line            Int
+  /// The cells as uploaded, by column header.
+  raw             Json
+  /// The row read through the column map: names, numbers, and dates as Pharmica will store them.
+  data            Json?
+  status          ImportRowStatus @default(READY)
+  problems        String[]        @default([])
+  /// STOCK: MASTER (a master-list medicine), EXISTING (an item the branch already has), NEW (a new shop item), SKIP.
+  /// CUSTOMERS and SUPPLIERS: CREATE or SKIP.
+  action          String?
+  masterProductId String?
+  productId       String?
+  score           Float?
+  /// Up to three suggested master-list medicines with their similarity.
+  candidates      Json?
+  decidedById     String?
+  decidedAt       DateTime?
+  /// What the commit created, for the audit trail.
+  result          Json?
+  job             ImportJob       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, line])
+  @@index([jobId, status])
+}

@@ -1,0 +1,32 @@
+{
+  "name": "@pharmica/database",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:reset": "prisma migrate reset",
+    "db:seed": "node prisma/seed.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "db:import-master": "node prisma/import-master.mjs"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": "./src/client.ts",
+    "./master-import": "./src/master-import.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.16.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "prisma": "^6.16.2",
+    "typescript": "^5.9.2"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.mjs"
+  }
+}
