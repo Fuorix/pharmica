@@ -62,7 +62,9 @@ Send the three addresses (admin, owner, POS) and the passwords, with these notes
 - Offline billing: once the POS has loaded its catalogue, switch the internet off and keep billing; it uploads when the internet is back. Do not reload the POS page while offline, because the browser needs the internet to load the page itself.
 
 ## Updating
-Every merge to `main` rebuilds all four services by themselves. The API build also applies new database migrations and re-seeds the demo pharmacy, which resets the demo passwords and PINs to the values above.
+Work goes through pull requests: GitHub Actions (`.github/workflows/ci.yml`) runs lint, type checks, tests, and the build on every pull request and again on `main` after the merge. Render deploys a merge to `main` only after those checks pass (`autoDeployTrigger: checksPass` in `render.yaml`); if they fail, the running version stays up and nothing is deployed. The API build also applies new database migrations and re-seeds the demo pharmacy, which resets the demo passwords and PINs to the values above.
+
+To keep untested code out of `main`, protect it on GitHub: repository Settings → Branches (or Rules → Rulesets) → a rule for `main` that requires a pull request before merging and requires the `validate` status check to pass.
 
 Free limits to keep in mind: Render's free plan includes a monthly allowance of build minutes, and each merge builds all four services (roughly 10–15 minutes in total), so avoid pushing many small merges in a row. The sleeping API does not count against you.
 
