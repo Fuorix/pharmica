@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, MouseEvent, useCallback, useEffect, useState } from "react";
 import type { LedgerLine, PayableSummary } from "@pharmica/contracts";
 import { AgeingBar, LedgerTable, money } from "./accountsUi";
 import { apiFetch, errorMessage, jsonBody } from "./session";
@@ -69,16 +69,28 @@ export function SuppliersPage({ branchId }: { branchId: string }) {
     </section>
 
     <article className="panel catalogue-table">
-      <div className="catalogue-row catalogue-head account-row"><span>Supplier</span><span>You owe</span><span>Oldest unpaid</span><span>Phone</span><span>Ageing</span><span /></div>
+      <div className="catalogue-row catalogue-head account-row has-edit"><span>Supplier</span><span>You owe</span><span>Oldest unpaid</span><span>Phone</span><span>Ageing</span><span /></div>
       {suppliers.map((supplier) => <div key={supplier.id}>
-        <div className={`catalogue-row account-row clickable ${supplier.id === openId ? "open" : ""}`} onClick={() => { setOpenId(supplier.id === openId ? null : supplier.id); setEdit(null); setMessage(""); }}>
+        <div className={`catalogue-row account-row has-edit clickable ${supplier.id === openId ? "open" : ""}`} onClick={() => { setOpenId(supplier.id === openId ? null : supplier.id); setEdit(null); setMessage(""); }}>
           <div><strong>{supplier.name}</strong><span>{supplier.address ?? ""}</span></div>
           <span className={supplier.balance > 0 ? "warning" : ""}>{money(supplier.balance)}</span>
           <span>{supplier.balance > 0 ? `${supplier.daysOutstanding} days` : "—"}</span>
           <span>{supplier.phone ?? "—"}</span>
           <AgeingBar buckets={supplier.buckets} />
+          <button type="button" className="icon-button" aria-label={`Edit ${supplier.name}`} title="Edit supplier" onClick={(event) => startEdit(supplier, event)}>
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18.71-11.04a1 1 0 0 0 0-1.41l-2.51-2.51a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 2-1.66Z"/></svg>
+          </button>
         </div>
         {supplier.id === openId && <div className="stock-detail">
+          {edit?.id === supplier.id && <form className="inventory-form" onSubmit={saveEdit}>
+            <input required placeholder="Name" value={edit.name} onChange={(event) => setEdit({ ...edit, name: event.target.value })} />
+            <input placeholder="Phone" value={edit.phone} onChange={(event) => setEdit({ ...edit, phone: event.target.value })} />
+            <input placeholder="Address" value={edit.address} onChange={(event) => setEdit({ ...edit, address: event.target.value })} />
+            <div className="row-actions">
+              <button type="submit">Save changes</button>
+              <button type="button" className="secondary" onClick={() => setEdit(null)}>Cancel</button>
+            </div>
+          </form>}
           <form className="inventory-form adjust" onSubmit={saveEntry}>
             <select value={entry.kind} onChange={(event) => setEntry({ ...entry, kind: event.target.value as "PAYMENT" | "ADJUSTMENT" })}><option value="PAYMENT">Payment made</option><option value="ADJUSTMENT">Adjustment (+ adds, − reduces)</option></select>
             <input required inputMode="decimal" placeholder={entry.kind === "PAYMENT" ? "Amount" : "e.g. -500"} value={entry.amount} onChange={(event) => setEntry({ ...entry, amount: event.target.value.replace(/[^\d.-]/g, "") })} />

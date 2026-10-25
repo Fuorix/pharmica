@@ -122,6 +122,9 @@ table { font-variant-numeric: tabular-nums; }
 .purchase-item summary { cursor: pointer; display: flex; flex-direction: column; gap: 3px; }
 .purchase-item summary span { color: var(--muted); font-size: 13px; }
 .account-row { grid-template-columns: minmax(200px, 2fr) 120px 110px 110px minmax(200px, 2fr); }
+.account-row.has-edit { grid-template-columns: minmax(200px, 2fr) 120px 110px 110px minmax(200px, 2fr) 36px; }
+.icon-button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; background: transparent; color: var(--muted); border: 0; }
+.icon-button:hover { color: var(--brand-dark); }
 .catalogue-row.inactive { opacity: .55; }
 .ageing { display: flex; flex-wrap: wrap; gap: 4px; }
 .ageing em { font-style: normal; font-size: 11px; padding: 2px 6px; border-radius: 4px; background: var(--ok-soft); color: var(--ok); }
