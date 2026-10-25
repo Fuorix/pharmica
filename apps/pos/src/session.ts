@@ -8,6 +8,8 @@ export type PosDevice = ActivateDeviceResponse["device"];
 type StoredDevice = { deviceToken: string; device: PosDevice };
 
 const DEVICE_KEY = "pharmica_device";
+/** Who is signed in on this tab. Survives refresh; Lock and closing the tab still require a PIN. */
+const USER_KEY = "pharmica_pos_user";
 
 // The device token is tiny and needed before the local database opens, so it lives in localStorage.
 export function loadDevice(): StoredDevice | null {
@@ -25,6 +27,23 @@ export function saveDevice(value: StoredDevice | null): void {
     else localStorage.removeItem(DEVICE_KEY);
   } catch {
     // Without storage the counter asks for activation again on restart.
+  }
+}
+
+export function loadSignedInUserId(): string | null {
+  try {
+    return sessionStorage.getItem(USER_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function saveSignedInUserId(userId: string | null): void {
+  try {
+    if (userId) sessionStorage.setItem(USER_KEY, userId);
+    else sessionStorage.removeItem(USER_KEY);
+  } catch {
+    // Without session storage a refresh asks for the PIN again.
   }
 }
 

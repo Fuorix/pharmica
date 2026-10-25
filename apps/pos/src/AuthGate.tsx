@@ -4,7 +4,7 @@ import { openLocalDb, type LocalDb } from "./local/db";
 import { PosEngine } from "./local/engine";
 import { checkPin, createPinVerifier, type PinVerifier } from "./local/pin";
 import { httpTransport } from "./local/transport";
-import { apiFetch, apiUrl, loadDevice, PosSessionContext, saveDevice, useEngineState, type PosDevice } from "./session";
+import { apiFetch, apiUrl, loadDevice, loadSignedInUserId, PosSessionContext, saveDevice, saveSignedInUserId, useEngineState, type PosDevice } from "./session";
 
 type Stage =
   | { name: "loading" }
@@ -24,7 +24,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
     if (!stored) return setStage({ name: "activate", notice });
     const db = await openLocalDb();
     const engine = await PosEngine.open(db, httpTransport(apiUrl, stored.deviceToken), stored.device.id);
-    setStage({ name: "ready", engine, db, device: stored.device, user: null });
+    const savedId = loadSignedInUserId();
+    const user = savedId ? engine.getState().snapshot?.staff.find((member) => member.id === savedId) ?? null : null;
+    if (savedId && !user) saveSignedInUserId(null);
+    setStage({ name: "ready", engine, db, device: stored.device, user });
   }, []);
 
   useEffect(() => { void start(); }, [start]);
@@ -36,9 +39,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
   if (stage.name === "loading") return <main className="auth-state">Starting counter...</main>;
   if (stage.name === "activate") return <ActivateScreen notice={stage.notice} onActivated={() => void start()} />;
   if (!stage.user) {
-    return <PinScreen engine={stage.engine} db={stage.db} device={stage.device} onSignedIn={(user) => setStage({ ...stage, user })} onReactivate={() => { saveDevice(null); void start("Enter the new activation code from the owner panel."); }} />;
+    return <PinScreen engine={stage.engine} db={stage.db} device={stage.device} onSignedIn={(user) => { saveSignedInUserId(user.id); setStage({ ...stage, user }); }} onReactivate={() => { saveDevice(null); saveSignedInUserId(null); void start("Enter the new activation code from the owner panel."); }} />;
   }
   const lock = () => {
+    saveSignedInUserId(null);
     void apiFetch("/api/v1/auth/logout", { method: "POST" }).catch(() => undefined);
     setStage({ ...stage, user: null });
   };
