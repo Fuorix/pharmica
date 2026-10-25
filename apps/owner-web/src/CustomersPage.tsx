@@ -8,7 +8,7 @@ type Filter = "all" | "owing" | "overdue";
 /** Customer credit (khata): who owes what, for how long, and every entry behind it. */
 export function CustomersPage({ branchId }: { branchId: string }) {
   const [customers, setCustomers] = useState<ReceivableSummary[]>([]);
-  const [filter, setFilter] = useState<Filter>("owing");
+  const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [ledger, setLedger] = useState<LedgerLine[]>([]);
@@ -67,7 +67,7 @@ export function CustomersPage({ branchId }: { branchId: string }) {
       <article><span>Overdue amount</span><strong className={overdue.length ? "warning" : ""}>{money(overdue.reduce((sum, customer) => sum + customer.balance, 0))}</strong></article>
     </section>
     <div className="filter-bar">
-      {([["owing", "Owing"], ["overdue", `Overdue (${overdue.length})`], ["all", "All"]] as Array<[Filter, string]>).map(([value, label]) => <button key={value} className={filter === value ? "tab active" : "tab"} onClick={() => setFilter(value)}>{label}</button>)}
+      {([["all", "All"],["owing", "Owing"], ["overdue", `Overdue (${overdue.length})`]] as Array<[Filter, string]>).map(([value, label]) => <button key={value} className={filter === value ? "tab active" : "tab"} onClick={() => setFilter(value)}>{label}</button>)}
       <input className="catalogue-search" placeholder="Search by name or mobile" value={query} onChange={(event) => setQuery(event.target.value)} />
     </div>
 
