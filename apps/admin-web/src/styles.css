@@ -167,6 +167,10 @@ progress::-moz-progress-bar { background: var(--brand); border-radius: 999px; }
 .auth-card label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 600; color: var(--muted); }
 .auth-card input { padding: 12px 14px; font-size: 16px; }
 .auth-card button { padding: 13px; font-size: 16px; border-radius: var(--radius); }
+.password-field { position: relative; display: block; }
+.password-field input { width: 100%; padding-right: 44px; box-sizing: border-box; }
+.auth-card .password-reveal { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; padding: 0; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; cursor: pointer; }
+.auth-card .password-reveal:hover:not(:disabled) { background: transparent; color: var(--text); }
 .auth-error { color: var(--bad); background: var(--bad-soft); padding: 10px 12px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 600; margin: 0; }
 
 /* Imports (assisted setup), the same look as the owner panel */

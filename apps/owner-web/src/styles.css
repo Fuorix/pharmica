@@ -263,6 +263,10 @@ button.link { background: none; color: inherit; padding: 0; text-decoration: und
 .auth-card label { font-size: 14px; font-weight: 600; }
 .auth-card input { padding: 12px 14px; font-size: 16px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); }
 .auth-card button { padding: 13px; font-size: 16px; border-radius: var(--radius); }
+.password-field { position: relative; display: block; }
+.password-field input { width: 100%; padding-right: 44px; box-sizing: border-box; }
+.auth-card .password-reveal { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; padding: 0; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; cursor: pointer; }
+.auth-card .password-reveal:hover:not(:disabled) { background: transparent; color: var(--text); }
 .auth-error { color: var(--bad); background: var(--bad-soft); padding: 10px 12px; border-radius: var(--radius-sm); font-weight: 600; }
 input[type=file] { border: 1px dashed var(--line-strong); padding: 6px; background: var(--surface-2); }
 input[type=file]::file-selector-button { font: inherit; font-weight: 600; border: 1px solid var(--line-strong); background: var(--surface); color: var(--text); padding: 6px 12px; border-radius: 6px; margin-right: 10px; cursor: pointer; }
