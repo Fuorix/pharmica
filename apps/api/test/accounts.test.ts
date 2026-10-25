@@ -121,7 +121,8 @@ describe("suppliers and payables", () => {
 
     const ledger = await call(supplierLedger.GET, { token: owner, params: { id: supplier.id } });
     expect(ledger.body.supplier).toMatchObject({ balance: 5500, daysOutstanding: 40 });
-    expect((ledger.body.entries as LedgerLine[])[1]).toMatchObject({ type: "PAYMENT", amount: -4000, method: "cheque", reference: "CHQ-5512", balanceAfter: 6000 });
+    expect((ledger.body.entries as LedgerLine[])[0]).toMatchObject({ type: "ADJUSTMENT", note: "Short-supplied items (Muller & Phipps)" });
+    expect((ledger.body.entries as LedgerLine[])[1]).toMatchObject({ type: "PAYMENT", amount: -4000, method: "cheque", reference: "CHQ-5512", balanceAfter: 6000, note: "Payment to Muller & Phipps" });
     const payables = await call(suppliers.GET, { path: `/api/v1/suppliers?branchId=${t.branchA1.id}&status=owing`, token: owner });
     expect((payables.body.suppliers as PayableSummary[]).map((item) => [item.name, item.balance])).toEqual([["Muller & Phipps", 5500]]);
   });

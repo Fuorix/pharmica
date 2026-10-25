@@ -10,6 +10,7 @@ export function SuppliersPage({ branchId }: { branchId: string }) {
   const [ledger, setLedger] = useState<LedgerLine[]>([]);
   const [message, setMessage] = useState("");
   const [newSupplier, setNewSupplier] = useState({ name: "", phone: "", address: "" });
+  const [edit, setEdit] = useState<{ id: string; name: string; phone: string; address: string } | null>(null);
   const [entry, setEntry] = useState({ kind: "PAYMENT" as "PAYMENT" | "ADJUSTMENT", amount: "", method: "cash", reference: "", reason: "" });
 
   const load = useCallback(async () => {
@@ -34,6 +35,21 @@ export function SuppliersPage({ branchId }: { branchId: string }) {
     if (response.ok) { setNewSupplier({ name: "", phone: "", address: "" }); await load(); }
   }
 
+  function startEdit(supplier: PayableSummary, event: MouseEvent) {
+    event.stopPropagation();
+    setOpenId(supplier.id);
+    setEdit({ id: supplier.id, name: supplier.name, phone: supplier.phone ?? "", address: supplier.address ?? "" });
+    setMessage("");
+  }
+
+  async function saveEdit(event: FormEvent) {
+    event.preventDefault();
+    if (!edit) return;
+    const response = await apiFetch("/api/v1/suppliers", { method: "PATCH", ...jsonBody({ supplierId: edit.id, name: edit.name, phone: edit.phone, address: edit.address }) });
+    setMessage(response.ok ? `${edit.name} updated` : await errorMessage(response, "Could not update supplier"));
+    if (response.ok) { setEdit(null); await load(); }
+  }
+
   async function saveEntry(event: FormEvent) {
     event.preventDefault();
     if (!open) return;
@@ -53,9 +69,9 @@ export function SuppliersPage({ branchId }: { branchId: string }) {
     </section>
 
     <article className="panel catalogue-table">
-      <div className="catalogue-row catalogue-head account-row"><span>Supplier</span><span>You owe</span><span>Oldest unpaid</span><span>Phone</span><span>Ageing</span></div>
+      <div className="catalogue-row catalogue-head account-row"><span>Supplier</span><span>You owe</span><span>Oldest unpaid</span><span>Phone</span><span>Ageing</span><span /></div>
       {suppliers.map((supplier) => <div key={supplier.id}>
-        <div className={`catalogue-row account-row clickable ${supplier.id === openId ? "open" : ""}`} onClick={() => { setOpenId(supplier.id === openId ? null : supplier.id); setMessage(""); }}>
+        <div className={`catalogue-row account-row clickable ${supplier.id === openId ? "open" : ""}`} onClick={() => { setOpenId(supplier.id === openId ? null : supplier.id); setEdit(null); setMessage(""); }}>
           <div><strong>{supplier.name}</strong><span>{supplier.address ?? ""}</span></div>
           <span className={supplier.balance > 0 ? "warning" : ""}>{money(supplier.balance)}</span>
           <span>{supplier.balance > 0 ? `${supplier.daysOutstanding} days` : "—"}</span>
@@ -72,7 +88,7 @@ export function SuppliersPage({ branchId }: { branchId: string }) {
             </> : <input required placeholder="Reason (required)" value={entry.reason} onChange={(event) => setEntry({ ...entry, reason: event.target.value })} />}
             <button>Save</button>
           </form>
-          <LedgerTable entries={ledger} />
+          <LedgerTable entries={ledger} name={supplier.name} />
         </div>}
       </div>)}
       {!suppliers.length && <p className="page-note">Suppliers are added when you receive a purchase, or below.</p>}
