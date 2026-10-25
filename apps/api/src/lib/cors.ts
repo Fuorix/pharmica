@@ -1,7 +1,9 @@
 const localOrigins = [
-  "http://localhost:3000",
-  "http://localhost:3001",
-  "http://localhost:3002",
+  // Vite uses 3000–3002; if those ports are already taken it walks 3003+.
+  ...[3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3010].flatMap((port) => [
+    `http://localhost:${port}`,
+    `http://127.0.0.1:${port}`
+  ]),
   // Tauri POS webview origins (Windows and other platforms).
   "http://tauri.localhost",
   "tauri://localhost"

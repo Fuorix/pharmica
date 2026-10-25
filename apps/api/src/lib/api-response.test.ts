@@ -33,4 +33,11 @@ describe("withCors", () => {
     const request = new Request("http://localhost:4000/api/v1/sales", { headers: { origin: "https://evil.example" } });
     expect(withCors(new Response(null), request).headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
+
+  it("allows Vite fallback ports and 127.0.0.1", () => {
+    for (const origin of ["http://localhost:3003", "http://127.0.0.1:3000"]) {
+      const request = new Request("http://localhost:4000/api/v1/auth/login", { headers: { origin } });
+      expect(withCors(new Response(null), request).headers.get("Access-Control-Allow-Origin")).toBe(origin);
+    }
+  });
 });

@@ -23,7 +23,7 @@ export function StaffPage({ branches }: { branches: Branch[] }) {
   const { user: me } = useOwnerSession();
   const [users, setUsers] = useState<StaffUser[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
   const [newUser, setNewUser] = useState({ ...emptyUser, branchId: branches[0]?.id ?? "" });
   const [newDevice, setNewDevice] = useState({ name: "", branchId: branches[0]?.id ?? "" });
   const branchName = (id: string | null) => id ? branches.find((branch) => branch.id === id)?.name ?? "Unknown branch" : "All branches";
@@ -38,9 +38,13 @@ export function StaffPage({ branches }: { branches: Branch[] }) {
 
   async function send(path: string, method: string, body: unknown, success: string) {
     const response = await apiFetch(path, { method, ...jsonBody(body) });
-    setMessage(response.ok ? success : await errorMessage(response, "Request failed"));
-    if (response.ok) await load();
-    return response.ok;
+    if (response.ok) {
+      setMessage({ text: success });
+      await load();
+      return true;
+    }
+    setMessage({ text: await errorMessage(response, "Request failed"), error: true });
+    return false;
   }
 
   async function addUser(event: FormEvent) {
@@ -60,7 +64,7 @@ export function StaffPage({ branches }: { branches: Branch[] }) {
     const input = window.prompt(`Largest discount ${member.name} may give, as % of the bill (0-100)`, String(member.maxDiscountPercent ?? 0));
     if (input === null) return;
     const percent = Number(input);
-    if (!Number.isInteger(percent) || percent < 0 || percent > 100) return setMessage("Enter a whole percent from 0 to 100");
+    if (!Number.isInteger(percent) || percent < 0 || percent > 100) return setMessage({ text: "Enter a whole percent from 0 to 100", error: true });
     void send("/api/v1/users", "PATCH", { userId: member.id, maxDiscountPercent: percent }, `${member.name} can now give up to ${percent}% discount`);
   }
 
@@ -70,7 +74,7 @@ export function StaffPage({ branches }: { branches: Branch[] }) {
   }
 
   return <>
-    <div className="page-heading"><h1>Staff & devices</h1><span className="page-note">{message}</span></div>
+    <div className="page-heading"><h1>Staff & devices</h1><span className={message?.error ? "page-note page-error" : "page-note"}>{message?.text}</span></div>
     <section className="content-grid">
       <article className="panel">
         <div className="panel-heading"><h2>Staff</h2><span>{users.length} people</span></div>
