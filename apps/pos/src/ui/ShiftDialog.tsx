@@ -41,7 +41,7 @@ export function ShiftDialog({ shift, report, onReport, onPrintInterim, onClose, 
       {error && <p className="warning-text">{error}</p>}
       <div className="row">
         <button type="button" onClick={onPrintInterim}>Print interim report</button>
-        <button className="primary">Close shift and print <b>Enter</b></button>
+        <button className="primary">Close shift, print, and lock <b>Enter</b></button>
       </div>
     </form>
   </Dialog>;

@@ -212,7 +212,7 @@ export const SHORTCUTS: Array<[string, string]> = [
   ["F3", "Customer (for credit / udhaar)"], ["F7", "Discount on the selected line"], ["F8", "Discount on the whole bill"],
   ["F9", "Cycle payment: cash, card, credit"], ["F10", "Take payment"], ["F5 / F6", "Hold bill / resume held bill"],
   ["Ctrl+R", "Recent sales: reprint, void, return, exchange"], ["Ctrl+P", "Reprint last receipt"], ["Ctrl+D", "Open cash drawer (recorded)"],
-  ["F11", "Shift: end-of-day report and close"], ["F12", "Lock the counter"], ["F1", "This help"]
+  ["F11", "Shift: end-of-day report, close, and lock"], ["F12", "Lock the counter"], ["F1", "This help"]
 ];
 
 export function HelpDialog({ onClose }: { onClose: () => void }) {
