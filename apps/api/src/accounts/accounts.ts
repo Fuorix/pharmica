@@ -67,7 +67,7 @@ export async function recordSupplierPayment(tx: Tx, context: AccountContext, inp
   const supplier = await tx.supplier.findFirst({ where: { id: input.supplierId, branchId: context.branchId } });
   if (!supplier) throw new AccountError("SUPPLIER_NOT_FOUND", "The supplier is not in this branch");
   if (input.method !== "cash" && !input.reference?.trim()) throw new AccountError("REFERENCE_REQUIRED", "Enter the cheque number or bank reference");
-  const entry = await tx.supplierLedgerEntry.create({ data: { branchId: context.branchId, supplierId: supplier.id, userId: context.userId, type: "PAYMENT", amount: roundMoney(input.amount), method: input.method, reference: input.reference?.trim() || null, note: input.note?.trim() || "Payment to supplier" } });
+  const entry = await tx.supplierLedgerEntry.create({ data: { branchId: context.branchId, supplierId: supplier.id, userId: context.userId, type: "PAYMENT", amount: roundMoney(input.amount), method: input.method, reference: input.reference?.trim() || null, note: input.note?.trim() || `Payment to ${supplier.name}` } });
   await tx.auditLog.create({ data: { organisationId: context.organisationId, branchId: context.branchId, userId: context.userId, action: "supplier.payment", entityType: "supplier", entityId: supplier.id, metadata: { amount: input.amount, method: input.method, reference: input.reference } } });
   return entry;
 }
@@ -77,7 +77,7 @@ export async function adjustSupplier(tx: Tx, context: AccountContext, input: { s
   if (!input.reason.trim()) throw new AccountError("REASON_REQUIRED", "A reason is required for every adjustment");
   const supplier = await tx.supplier.findFirst({ where: { id: input.supplierId, branchId: context.branchId } });
   if (!supplier) throw new AccountError("SUPPLIER_NOT_FOUND", "The supplier is not in this branch");
-  const entry = await tx.supplierLedgerEntry.create({ data: { branchId: context.branchId, supplierId: supplier.id, userId: context.userId, type: "ADJUSTMENT", amount: roundMoney(input.amount), note: input.reason.trim() } });
+  const entry = await tx.supplierLedgerEntry.create({ data: { branchId: context.branchId, supplierId: supplier.id, userId: context.userId, type: "ADJUSTMENT", amount: roundMoney(input.amount), note: `${input.reason.trim()} (${supplier.name})` } });
   await tx.auditLog.create({ data: { organisationId: context.organisationId, branchId: context.branchId, userId: context.userId, action: "supplier.adjustment", entityType: "supplier", entityId: supplier.id, metadata: { amount: input.amount, reason: input.reason } } });
   return entry;
 }
