@@ -350,8 +350,10 @@ export function App() {
       onCloseShift={async (counted) => {
         if (items.length) throw new PosError("Finish or hold the current bill before closing the shift");
         const closed = await engine.closeShift(user, counted);
-        setDialog(null); print({ kind: "shift", shift: closed, report: closed.report! });
-        say("ok", "Shift closed. End-of-day report printed.");
+        setDialog(null);
+        print({ kind: "shift", shift: closed, report: closed.report! });
+        // Print needs the slip in the DOM first; then lock so the next person signs in with their PIN.
+        window.setTimeout(() => lock(), 120);
       }} />}
     {dialog?.kind === "sync" && <SyncDialog status={status} outbox={state.outbox} paperWidth={state.settings.paperWidth} onPaperWidth={(width) => void engine.saveSettings({ ...state.settings, paperWidth: width })}
       onRetry={() => void engine.retryFailed()} onSyncNow={() => void engine.syncNow()} onClose={closeDialog}
