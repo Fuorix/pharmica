@@ -230,7 +230,7 @@ export function App() {
           <button onClick={() => setDialog({ kind: "customer" })}>Customer <b>F3</b></button>
           <button onClick={() => setDialog({ kind: "sales" })}>Recent sales <b>Ctrl+R</b></button>
           <button onClick={() => lastSale ? print({ kind: "receipt", sale: lastSale }) : say("error", "No sale to reprint yet")}>Reprint last <b>Ctrl+P</b></button>
-          <button onClick={() => setDialog({ kind: "shift" })}>Shift / end of day <b>F11</b></button>
+          <button className="shift-end" onClick={() => setDialog({ kind: "shift" })}>Shift / end of day <b>F11</b></button>
         </nav>
         <section className="sale-panel">
           <div className="search">

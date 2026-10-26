@@ -88,7 +88,9 @@ input::placeholder { color: #8a9a96; }
 /* Billing layout */
 .pos-grid { display: grid; grid-template-columns: 190px minmax(0, 1fr) 420px; gap: 16px; max-width: 1480px; margin: auto; align-items: start; }
 /* Counter actions down the left, like a sidebar; search in the middle; the bill on the right. */
-.pos-actions { display: flex; flex-direction: column; gap: 8px; position: sticky; top: 16px; }
+.pos-actions { display: flex; flex-direction: column; gap: 8px; align-self: stretch; }
+/* End of day sits apart at the bottom, away from the everyday buttons. */
+.pos-actions .shift-end { margin-top: auto; }
 .pos-actions button { background: var(--surface); border: 1px solid var(--line); color: var(--text); padding: 14px 12px; text-align: left; font-weight: 600; font-size: 14px; display: flex; justify-content: space-between; align-items: center; gap: 8px; border-radius: var(--radius); box-shadow: var(--shadow); }
 .pos-actions button:hover { border-color: var(--brand); background: var(--brand-soft); }
 .sale-panel { min-height: 560px; border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; background: var(--surface); display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow); }
