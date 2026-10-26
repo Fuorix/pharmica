@@ -11,15 +11,15 @@ export type ExportEntity = typeof EXPORT_ENTITIES[number];
 type Row = Record<string, unknown>;
 
 /**
- * One table of the organisation's data. Secrets never leave: password and PIN hashes, device secrets and
- * activation codes are left out, and sessions are not exported at all.
+ * One table of the organisation's data. Secrets never leave: password and PIN hashes and device secrets are left out,
+ * and sessions are not exported at all.
  */
 export async function exportTable(organisationId: string, entity: ExportEntity): Promise<Row[]> {
   const inOrg = { branch: { organisationId } };
   switch (entity) {
     case "branches": return db.branch.findMany({ where: { organisationId }, orderBy: { name: "asc" } });
     case "users": return db.user.findMany({ where: { organisationId }, omit: { credentialHash: true, pinHash: true }, orderBy: { createdAt: "asc" } });
-    case "devices": return db.device.findMany({ where: inOrg, omit: { activationCode: true, secretHash: true }, orderBy: { createdAt: "asc" } });
+    case "devices": return db.device.findMany({ where: inOrg, omit: { secretHash: true }, orderBy: { createdAt: "asc" } });
     case "products": return db.product.findMany({ where: inOrg, orderBy: { createdAt: "asc" } });
     case "batches": return db.batch.findMany({ where: { product: inOrg }, orderBy: { createdAt: "asc" } });
     case "suppliers": return db.supplier.findMany({ where: inOrg, orderBy: { createdAt: "asc" } });

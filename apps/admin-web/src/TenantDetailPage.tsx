@@ -26,7 +26,7 @@ export function TenantDetailPage({ id, onBack }: { id: string; onBack: () => voi
   if (!tenant) return <p className="muted">Loading…</p>;
   return <>
     <header className="page-head">
-      <div><button className="ghost back" onClick={onBack}>← Pharmacies</button><h2>{tenant.name}</h2><p className="muted">{[tenant.contactName, tenant.phone, tenant.city].filter(Boolean).join(" · ")} · since {day(tenant.createdAt)}</p></div>
+      <div><button className="ghost back" onClick={onBack}>← Pharmacies</button><h2>{tenant.name} <span className="shop-code">{tenant.shopCode}</span></h2><p className="muted">{[tenant.contactName, tenant.phone, tenant.city].filter(Boolean).join(" · ")} · since {day(tenant.createdAt)}</p></div>
       <div className="head-side"><StatusChip status={tenant.subscription?.status ?? null} />{!tenant.isActive && <span className="chip expired">Suspended</span>}</div>
     </header>
     <Message text={message} />
@@ -77,7 +77,7 @@ function Setup({ tenant, act }: { tenant: TenantDetail; act: Act }) {
 
 function Counters({ tenant, act }: { tenant: TenantDetail; act: Act }) {
   const [branch, setBranch] = useState({ name: "", address: "", phone: "" });
-  const [counter, setCounter] = useState({ branchId: tenant.branches[0]?.id ?? "", name: "" });
+  const [counter, setCounter] = useState({ branchId: tenant.branches[0]?.id ?? "" });
   const branchName = (id: string | null) => tenant.branches.find((candidate) => candidate.id === id)?.name ?? "All branches";
   return <div className="two-col">
     <section className="card">
@@ -94,15 +94,14 @@ function Counters({ tenant, act }: { tenant: TenantDetail; act: Act }) {
     <section className="card">
       <h3>Counters</h3>
       {tenant.devices.map((device) => <div key={device.id} className={`line ${device.isActive ? "" : "inactive"}`}>
-        <div><strong>{device.name}</strong><small>{branchName(device.branchId)} · {device.activatedAt ? `activated ${day(device.activatedAt)}, seen ${ago(device.lastSeenAt)}` : <>code <code>{device.activationCode}</code></>}{device.isActive ? "" : " · deactivated"}</small></div>
+        <div><strong>{device.name}</strong><small>{branchName(device.branchId)} · {device.activatedAt ? `linked ${day(device.activatedAt)}, seen ${ago(device.lastSeenAt)}` : "not set up yet"}{device.isActive ? "" : " · turned off"}</small></div>
         <div className="row">
-          <button className="ghost" onClick={() => void act(() => send("/api/v1/devices", "PATCH", { deviceId: device.id, resetActivation: true }), `${device.name} has a new activation code`)}>New code</button>
-          <button className="ghost" onClick={() => void act(() => send("/api/v1/devices", "PATCH", { deviceId: device.id, isActive: !device.isActive }), device.isActive ? `${device.name} deactivated` : `${device.name} activated`)}>{device.isActive ? "Deactivate" : "Activate"}</button>
+          {device.activatedAt && <button className="ghost" onClick={() => void act(() => send("/api/v1/devices", "PATCH", { deviceId: device.id, unlink: true }), `${device.name} unlinked; it can be set up on another computer`)}>Unlink</button>}
+          <button className="ghost" onClick={() => void act(() => send("/api/v1/devices", "PATCH", { deviceId: device.id, isActive: !device.isActive }), device.isActive ? `${device.name} turned off` : `${device.name} turned on`)}>{device.isActive ? "Turn off" : "Turn on"}</button>
         </div>
       </div>)}
-      <form className="inline-form" onSubmit={(event: FormEvent) => { event.preventDefault(); void act(() => send("/api/v1/devices", "POST", counter), `${counter.name} added`).then(() => setCounter({ ...counter, name: "" })); }}>
+      <form className="inline-form" onSubmit={(event: FormEvent) => { event.preventDefault(); void act(() => send("/api/v1/devices", "POST", counter), "Counter added"); }}>
         <select value={counter.branchId} onChange={(event) => setCounter({ ...counter, branchId: event.target.value })}>{tenant.branches.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}</select>
-        <input required placeholder="Counter name" value={counter.name} onChange={(event) => setCounter({ ...counter, name: event.target.value })} />
         <button>Add counter</button>
       </form>
     </section>

@@ -5,7 +5,7 @@ import { apiFetch, errorMessage, jsonBody, useOwnerSession } from "./session";
 
 type Branch = { id: string; name: string };
 type StaffUser = { id: string; name: string; login: string; role: "owner" | "cashier"; branchId: string | null; isActive: boolean; hasPin: boolean; maxDiscountPercent: number | null };
-type Device = { id: string; name: string; branchId: string; activationCode: string; activatedAt: string | null; isActive: boolean; lastSeenAt: string | null; diagnostics: DeviceDiagnostics | null; diagnosticsAt: string | null };
+type Device = { id: string; name: string; counterNumber: number; branchId: string; activatedAt: string | null; isActive: boolean; lastSeenAt: string | null; diagnostics: DeviceDiagnostics | null; diagnosticsAt: string | null };
 
 /** One line on how a counter's uploads are doing, from what it last reported. */
 function deviceHealth(device: Device): string {
@@ -23,15 +23,23 @@ export function StaffPage({ branches }: { branches: Branch[] }) {
   const { user: me } = useOwnerSession();
   const [users, setUsers] = useState<StaffUser[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
+  const [shopCode, setShopCode] = useState("");
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
   const [newUser, setNewUser] = useState({ ...emptyUser, branchId: branches[0]?.id ?? "" });
-  const [newDevice, setNewDevice] = useState({ name: "", branchId: branches[0]?.id ?? "" });
+  const [newDevice, setNewDevice] = useState({ counterNumber: "", branchId: branches[0]?.id ?? "" });
   const branchName = (id: string | null) => id ? branches.find((branch) => branch.id === id)?.name ?? "Unknown branch" : "All branches";
+  const used = new Set(devices.map((device) => device.counterNumber));
+  let nextNumber = 1;
+  while (used.has(nextNumber)) nextNumber++;
 
   const load = useCallback(async () => {
     const [userResponse, deviceResponse] = await Promise.all([apiFetch("/api/v1/users"), apiFetch("/api/v1/devices")]);
     if (userResponse.ok) setUsers((await userResponse.json()).users);
-    if (deviceResponse.ok) setDevices((await deviceResponse.json()).devices);
+    if (deviceResponse.ok) {
+      const body = await deviceResponse.json() as { shopCode: string | null; devices: Device[] };
+      setDevices(body.devices);
+      setShopCode(body.shopCode ?? "");
+    }
   }, []);
 
   useEffect(() => { void load(); }, [load]);
@@ -70,7 +78,9 @@ export function StaffPage({ branches }: { branches: Branch[] }) {
 
   async function addDevice(event: FormEvent) {
     event.preventDefault();
-    if (await send("/api/v1/devices", "POST", newDevice, `${newDevice.name} registered. Enter its activation code on the counter PC`)) setNewDevice({ ...newDevice, name: "" });
+    const counterNumber = Number(newDevice.counterNumber || nextNumber);
+    const name = `${shopCode}-${counterNumber}`;
+    if (await send("/api/v1/devices", "POST", { branchId: newDevice.branchId, counterNumber }, `${name} added. On the counter computer, open the POS and enter ${name} with a staff PIN`)) setNewDevice({ ...newDevice, counterNumber: "" });
   }
 
   return <>
@@ -99,17 +109,21 @@ export function StaffPage({ branches }: { branches: Branch[] }) {
       </article>
       <article className="panel">
         <div className="panel-heading"><h2>POS devices</h2><span>{devices.filter((device) => device.isActive).length} active</span></div>
+        {shopCode && <div className="shop-code-box">
+          <div><span>Your shop ID</span><strong>{shopCode}</strong></div>
+          <p>To set up a counter computer, open the POS on it and enter the counter name (like <b>{shopCode}-1</b>) with any staff PIN. This is needed once per computer.</p>
+        </div>}
         {devices.map((device) => <div className={device.isActive ? "staff-row" : "staff-row inactive"} key={device.id}>
-          <div><strong>{device.name}</strong><span>{branchName(device.branchId)} · {device.activatedAt ? `activated, ${deviceHealth(device)}, last seen ${device.lastSeenAt ? new Date(device.lastSeenAt).toLocaleString() : "never"}` : <>activation code <code>{device.activationCode}</code></>}</span></div>
+          <div><strong>{device.name}</strong><span>{branchName(device.branchId)} · {!device.isActive ? "turned off" : device.activatedAt ? `linked, ${deviceHealth(device)}, last seen ${device.lastSeenAt ? new Date(device.lastSeenAt).toLocaleString() : "never"}` : "not set up yet: enter this name with a staff PIN on the counter computer"}</span></div>
           <div className="row-actions">
-            {device.activatedAt && <button className="secondary" onClick={() => window.confirm(`Reset ${device.name}? The counter will need a new activation code.`) && void send("/api/v1/devices", "PATCH", { deviceId: device.id, resetActivation: true }, `${device.name} reset; a new activation code is shown`)}>Reset</button>}
-            <button className="secondary" onClick={() => void send("/api/v1/devices", "PATCH", { deviceId: device.id, isActive: !device.isActive }, `${device.name} ${device.isActive ? "deactivated; it can no longer sell" : "reactivated"}`)}>{device.isActive ? "Deactivate" : "Reactivate"}</button>
+            {device.activatedAt && <button className="secondary" onClick={() => window.confirm(`Unlink ${device.name} from its computer? That computer stops selling, and the counter can then be set up on another computer.`) && void send("/api/v1/devices", "PATCH", { deviceId: device.id, unlink: true }, `${device.name} unlinked; set it up on the new computer with a staff PIN`)}>Unlink</button>}
+            <button className="secondary" onClick={() => void send("/api/v1/devices", "PATCH", { deviceId: device.id, isActive: !device.isActive }, `${device.name} ${device.isActive ? "turned off; it can no longer sell" : "turned on"}`)}>{device.isActive ? "Turn off" : "Turn on"}</button>
           </div>
         </div>)}
-        <form className="inventory-form" onSubmit={addDevice}>
-          <input required placeholder="Device name (e.g. Counter 2)" value={newDevice.name} onChange={(event) => setNewDevice({ ...newDevice, name: event.target.value })} />
-          <select required value={newDevice.branchId} onChange={(event) => setNewDevice({ ...newDevice, branchId: event.target.value })}>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select>
-          <button type="submit">Register device</button>
+        <form className="inventory-form counter-form" onSubmit={addDevice}>
+          <label className="counter-name">Counter name<span><b>{shopCode || "……"}-</b><input inputMode="numeric" aria-label="Counter number" placeholder={String(nextNumber)} value={newDevice.counterNumber} onChange={(event) => setNewDevice({ ...newDevice, counterNumber: event.target.value.replace(/\D/g, "").slice(0, 4) })} /></span></label>
+          <select required aria-label="Branch" value={newDevice.branchId} onChange={(event) => setNewDevice({ ...newDevice, branchId: event.target.value })}>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select>
+          <button type="submit" disabled={!shopCode}>Add counter</button>
         </form>
       </article>
     </section>

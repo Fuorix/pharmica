@@ -7,11 +7,9 @@ const notice = (page: Page) => page.getByRole("status");
 test("a counter sells on credit, takes a repayment, and records a controlled drug in the register, all offline", async ({ page, request }) => {
   await page.addInitScript(() => { window.print = () => undefined; });
   await page.goto("/");
-  await page.getByLabel("Activation code").fill("E2EPOSCODE03");
-  await page.keyboard.press("Enter");
-  await expect(page.getByText("Who is at the counter?")).toBeVisible({ timeout: 60_000 });
-  await page.keyboard.press("1");
-  await page.getByLabel("PIN for E2E Cashier").fill("1234");
+  // Setting the counter up with the cashier's PIN signs the cashier in.
+  await page.getByLabel("Counter name").fill("E2ETST-3");
+  await page.getByLabel("Your PIN").fill("1234");
   await page.keyboard.press("Enter");
   await page.getByLabel("Opening cash (PKR)").fill("1000");
   await page.keyboard.press("Enter");

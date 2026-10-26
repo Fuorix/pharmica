@@ -37,7 +37,9 @@ export async function GET(request: Request): Promise<Response> {
     select: { id: true, name: true, address: true, phone: true, settings: true },
     orderBy: { name: "asc" }
   });
-  return withCors(Response.json({ branches: branches.map(toBranch) }, { headers: { "x-api-version": "v1" } }), request);
+  // The shop code is shown in the owner panel so the owner can always look up their counter names.
+  const pharmacy = await db.organisation.findUnique({ where: { id: organisationId }, select: { name: true, shopCode: true } });
+  return withCors(Response.json({ branches: branches.map(toBranch), pharmacy }, { headers: { "x-api-version": "v1" } }), request);
 }
 
 /** Owner edits a branch's address, phone, receipt text, and alert windows. Settings not sent keep their value. */

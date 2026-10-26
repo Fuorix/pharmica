@@ -46,7 +46,7 @@ test("owner dashboard, expenses, profit and loss, settings, and export", async (
   await page.getByRole("button", { name: "Download everything (JSON)" }).click();
   const download = await downloading;
   const text = readFileSync(await download.path(), "utf8");
-  for (const secret of ["credentialHash", "pinHash", "secretHash", "activationCode", "E2EPOSCODE01"]) expect(text).not.toContain(secret);
+  for (const secret of ["credentialHash", "pinHash", "secretHash"]) expect(text).not.toContain(secret);
   const data = JSON.parse(text) as { expenses: Array<{ note: string; amount: string }> };
   expect(data.expenses).toContainEqual(expect.objectContaining({ note: "E2E rent", amount: "1234" }));
 

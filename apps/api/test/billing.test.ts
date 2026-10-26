@@ -8,7 +8,7 @@ import * as paymentsRoute from "../app/api/v1/admin/payments/route";
 import * as subscriptionRoute from "../app/api/v1/admin/tenants/[id]/subscription/route";
 import * as callbackRoute from "../app/api/v1/billing/callback/[id]/route";
 import * as billingRoute from "../app/api/v1/billing/route";
-import * as activateRoute from "../app/api/v1/devices/activate/route";
+import * as linkRoute from "../app/api/v1/devices/link/route";
 import * as devicesRoute from "../app/api/v1/devices/route";
 import * as exportRoute from "../app/api/v1/export/route";
 import * as snapshotRoute from "../app/api/v1/pos/snapshot/route";
@@ -17,7 +17,7 @@ import * as cashBookRoute from "../app/api/v1/reports/cash-book/route";
 import * as dashboardRoute from "../app/api/v1/reports/dashboard/route";
 import * as usersRoute from "../app/api/v1/users/route";
 import { refreshSubscription } from "../src/billing/subscriptions";
-import { call, resetDatabase, seedTenants, webSession } from "./helpers";
+import { call, PIN, resetDatabase, seedTenants, webSession } from "./helpers";
 
 let t: Awaited<ReturnType<typeof seedTenants>>;
 let owner: string;
@@ -87,16 +87,16 @@ describe("grace mode", () => {
     expect(billing.subscription).toMatchObject({ status: "GRACE", access: { billing: true, export: true, sync: false, reports: false, manage: true } });
     expect(billing.invoices).toMatchObject([{ status: "OPEN", balance: 6000 }]);
     // Managing the shop still works in grace; the other pharmacy is unaffected.
-    expect((await call(devicesRoute.POST, { method: "POST", token: owner, body: { branchId: t.branchA1.id, name: "Counter 2" } })).status).toBe(201);
+    expect((await call(devicesRoute.POST, { method: "POST", token: owner, body: { branchId: t.branchA1.id } })).status).toBe(201);
     expect((await call(snapshotRoute.GET, { deviceToken: t.deviceB1.token })).status).toBe(200);
   });
 
-  it("once expired, also blocks new counters, staff, and activations", async () => {
-    const device = await db.device.create({ data: { branchId: t.branchA1.id, name: "Spare", activationCode: "SPARE-CODE-1" } });
+  it("once expired, also blocks new counters, staff, and linking counters", async () => {
+    const device = await db.device.create({ data: { branchId: t.branchA1.id, name: "AAAA22-9", counterNumber: 9 } });
     await paidThrough(-40);
-    expect((await call(devicesRoute.POST, { method: "POST", token: owner, body: { branchId: t.branchA1.id, name: "Counter 3" } })).body.error?.code).toBe("SUBSCRIPTION_LAPSED");
+    expect((await call(devicesRoute.POST, { method: "POST", token: owner, body: { branchId: t.branchA1.id } })).body.error?.code).toBe("SUBSCRIPTION_LAPSED");
     expect((await call(usersRoute.POST, { method: "POST", token: owner, body: { name: "New", login: "new-cashier", role: "cashier", branchId: t.branchA1.id, pin: "5555" } })).status).toBe(402);
-    expect((await call(activateRoute.POST, { method: "POST", body: { activationCode: device.activationCode } })).status).toBe(402);
+    expect((await call(linkRoute.POST, { method: "POST", body: { deviceName: device.name, pin: PIN } })).status).toBe(402);
     expect(await db.device.findUniqueOrThrow({ where: { id: device.id } })).toMatchObject({ secretHash: null });
   });
 });
@@ -109,8 +109,8 @@ describe("plan features and limits", () => {
     const cashBook = await call(cashBookRoute.GET, { token: owner });
     expect(cashBook.body.error).toMatchObject({ code: "FEATURE_NOT_IN_PLAN", details: { feature: "accounting", plan: "starter" } });
 
-    expect((await call(devicesRoute.POST, { method: "POST", token: owner, body: { branchId: t.branchA1.id, name: "Counter 2" } })).status).toBe(201);
-    const third = await call(devicesRoute.POST, { method: "POST", token: owner, body: { branchId: t.branchA1.id, name: "Counter 3" } });
+    expect((await call(devicesRoute.POST, { method: "POST", token: owner, body: { branchId: t.branchA1.id } })).status).toBe(201);
+    const third = await call(devicesRoute.POST, { method: "POST", token: owner, body: { branchId: t.branchA1.id } });
     expect(third.body.error).toMatchObject({ code: "PLAN_LIMIT_REACHED" });
     expect(third.body.error?.message).toContain("2 active counters");
   });

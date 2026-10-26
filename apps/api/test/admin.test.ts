@@ -15,7 +15,7 @@ import * as meRoute from "../app/api/v1/auth/me/route";
 import * as passwordRoute from "../app/api/v1/auth/password/route";
 import * as pinLoginRoute from "../app/api/v1/auth/pin-login/route";
 import * as masterRoute from "../app/api/v1/catalogue/master/route";
-import * as activateRoute from "../app/api/v1/devices/activate/route";
+import * as linkRoute from "../app/api/v1/devices/link/route";
 import * as masterListRoute from "../app/api/v1/pos/master-list/route";
 import * as snapshotRoute from "../app/api/v1/pos/snapshot/route";
 import * as syncRoute from "../app/api/v1/pos/sync/route";
@@ -67,11 +67,12 @@ async function onboard(overrides: Record<string, unknown> = {}) {
 }
 
 describe("tenant onboarding", () => {
-  it("creates a pharmacy that can be activated end to end", async () => {
+  it("creates a pharmacy whose counter can be linked end to end", async () => {
     const { tenant, temporaryPassword } = await onboard();
     expect(temporaryPassword).toMatch(/^\w{4}-\w{4}-\w{4}$/);
     expect(tenant.subscription).toMatchObject({ status: "TRIAL", plan: { code: "starter" }, daysLeft: 14 });
-    expect(tenant.devices).toHaveLength(1);
+    expect(tenant.shopCode).toMatch(/^[2-9A-HJ-NP-Z]{6}$/);
+    expect(tenant.devices).toMatchObject([{ name: `${tenant.shopCode}-1` }]);
     expect(tenant.checklist.filter((step) => step.done).map((step) => step.key)).toEqual([]);
     const owner = tenant.users[0];
     expect(owner).toMatchObject({ role: "owner", mustChangeCredential: true });
@@ -87,9 +88,9 @@ describe("tenant onboarding", () => {
     expect((await call(usersRoute.GET, { token })).status).toBe(200);
     expect((await call(loginRoute.POST, { method: "POST", body: { login: "bilal@alshifa.pk", credential: temporaryPassword } })).status).toBe(401);
 
-    // The owner adds a cashier; the counter activates with the code from onboarding and the cashier signs in.
+    // The owner adds a cashier; the counter is linked with its name and the cashier's PIN, and the cashier signs in.
     await call(usersRoute.POST, { method: "POST", token, body: { name: "Kashif", login: "kashif-alshifa", role: "cashier", branchId: tenant.branches[0].id, pin: PIN } });
-    const activated = await call(activateRoute.POST, { method: "POST", body: { activationCode: tenant.devices[0].activationCode } });
+    const activated = await call(linkRoute.POST, { method: "POST", body: { deviceName: tenant.devices[0].name, pin: PIN } });
     expect(activated.status).toBe(201);
     const deviceToken = activated.body.deviceToken as string;
     expect((await call(snapshotRoute.GET, { deviceToken })).status).toBe(200);
@@ -97,7 +98,7 @@ describe("tenant onboarding", () => {
     expect((await call(pinLoginRoute.POST, { method: "POST", deviceToken, body: { userId: cashier.id, pin: PIN } })).status).toBe(200);
 
     const detail = (await call(tenantRoute.GET, { token: admin, params: { id: tenant.id } })).body.tenant as TenantDetail;
-    expect(detail.devices[0].activationCode).toBeNull();
+    expect(detail.devices[0].activatedAt).not.toBeNull();
     expect(detail.checklist.filter((step) => step.done).map((step) => step.key)).toEqual(["owner", "counter", "staff"]);
     const listed = (await call(tenantsRoute.GET, { token: admin, path: "/api/v1/admin/tenants?q=multan" })).body.tenants as TenantListItem[];
     expect(listed).toMatchObject([{ name: "Al-Shifa Medical", status: "TRIAL", activeDevices: 1, onboardingDone: 3, onboardingTotal: 8 }]);

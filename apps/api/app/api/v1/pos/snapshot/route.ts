@@ -14,7 +14,7 @@ export function OPTIONS(request: Request): Response { return corsOptions(request
 /** Everything an activated counter needs to bill offline: catalogue, stock by batch, customers, and staff. */
 export async function GET(request: Request): Promise<Response> {
   const device = await authenticateDevice(request);
-  if (!device) return withCors(apiError(401, "DEVICE_NOT_ACTIVATED", "This POS device is not activated or has been deactivated"), request);
+  if (!device) return withCors(apiError(401, "DEVICE_NOT_LINKED", "This counter is not linked or has been turned off"), request);
   // Billing never stops on the counter; only cloud sync pauses, and queued work waits for it.
   const paused = await requireCloudSync(device.branch.organisation);
   if (paused) return withCors(paused, request);

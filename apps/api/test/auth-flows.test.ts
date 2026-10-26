@@ -1,6 +1,6 @@
 import { db } from "@pharmica/database/client";
 import { beforeEach, describe, expect, it } from "vitest";
-import * as activate from "../app/api/v1/devices/activate/route";
+import * as link from "../app/api/v1/devices/link/route";
 import * as deviceMe from "../app/api/v1/devices/me/route";
 import * as devices from "../app/api/v1/devices/route";
 import * as login from "../app/api/v1/auth/login/route";
@@ -80,16 +80,48 @@ describe("sessions", () => {
   });
 });
 
-describe("POS device activation and PIN login", () => {
-  it("activates a device once with its code", async () => {
-    const device = await db.device.create({ data: { branchId: t.branchA1.id, name: "Counter 2", activationCode: "NEWCODE123" } });
-    const first = await call(activate.POST, { method: "POST", body: { activationCode: "newcode123" } });
-    expect(first.status).toBe(201);
-    expect(first.body).toMatchObject({ device: { id: device.id, branchId: t.branchA1.id } });
-    expect(String(first.body.deviceToken)).toMatch(new RegExp(`^${device.id}\\.`));
+describe("POS counter linking and PIN login", () => {
+  const counter2 = () => db.device.create({ data: { branchId: t.branchA1.id, name: "AAAA22-2", counterNumber: 2 } });
 
-    const reused = await call(activate.POST, { method: "POST", body: { activationCode: "NEWCODE123" } });
-    expect(reused.status).toBe(409);
+  it("links a counter with its name and a staff PIN, once", async () => {
+    const device = await counter2();
+    const first = await call(link.POST, { method: "POST", body: { deviceName: " aaaa22 - 02 ", pin: PIN } });
+    expect(first.status).toBe(201);
+    expect(first.body).toMatchObject({ device: { id: device.id, name: "AAAA22-2", branchId: t.branchA1.id } });
+    expect(String(first.body.deviceToken)).toMatch(new RegExp(`^${device.id}\\.`));
+    expect([t.ownerA.id, t.cashierA1.id]).toContain(first.body.userId);
+    expect((await call(deviceMe.GET, { deviceToken: String(first.body.deviceToken) })).status).toBe(200);
+    expect(await auditActions("device.linked")).toBe(1);
+
+    // A second computer cannot take the same counter while it is linked.
+    const again = await call(link.POST, { method: "POST", body: { deviceName: "AAAA22-2", pin: PIN } });
+    expect(again.status).toBe(409);
+    expect(again.body.error?.code).toBe("COUNTER_IN_USE");
+  });
+
+  it("refuses a wrong PIN, a PIN from another branch or pharmacy, and unknown counters, without saying which", async () => {
+    await counter2();
+    await db.user.update({ where: { id: t.ownerA.id }, data: { pinHash: null } });
+    await db.user.update({ where: { id: t.cashierA1.id }, data: { pinHash: null } });
+    // cashier-a2 works at branch A2 and owner-b at another pharmacy; both still have PIN 4321.
+    for (const body of [{ deviceName: "AAAA22-2", pin: "9999" }, { deviceName: "AAAA22-2", pin: PIN }, { deviceName: "ZZZZ22-1", pin: PIN }]) {
+      const response = await call(link.POST, { method: "POST", body });
+      expect(response.status).toBe(401);
+      expect(response.body.error?.message).toBe("The counter name or PIN is not right");
+    }
+    expect((await call(link.POST, { method: "POST", body: { deviceName: "not a counter", pin: PIN } })).status).toBe(400);
+  });
+
+  it("locks a counter name after five wrong attempts", async () => {
+    await counter2();
+    for (let attempt = 0; attempt < 5; attempt++) await call(link.POST, { method: "POST", body: { deviceName: "AAAA22-2", pin: "0000" } });
+    expect((await call(link.POST, { method: "POST", body: { deviceName: "AAAA22-2", pin: PIN } })).status).toBe(429);
+  });
+
+  it("refuses a counter the owner turned off", async () => {
+    const device = await counter2();
+    await db.device.update({ where: { id: device.id }, data: { isActive: false } });
+    expect((await call(link.POST, { method: "POST", body: { deviceName: "AAAA22-2", pin: PIN } })).status).toBe(403);
   });
 
   it("lists only staff of the device's branch who have a PIN", async () => {
@@ -111,7 +143,7 @@ describe("POS device activation and PIN login", () => {
     expect(session?.user.deviceId).toBe(t.deviceA1.id);
   });
 
-  it("refuses PIN login without an activated device", async () => {
+  it("refuses PIN login without a linked counter", async () => {
     expect((await call(pinLogin.POST, { method: "POST", body: { userId: t.cashierA1.id, pin: PIN } })).status).toBe(401);
   });
 
@@ -161,13 +193,38 @@ describe("sales require an active device", () => {
     expect(await db.sale.count()).toBe(0);
   });
 
-  it("issues a new activation code on reset and invalidates the old device token", async () => {
+  it("unlinks a counter so the old computer stops and another computer can link it", async () => {
     const ownerToken = await webSession(t.ownerA.id);
-    const response = await call(devices.PATCH, { method: "PATCH", token: ownerToken, body: { deviceId: t.deviceA1.id, resetActivation: true } });
+    const response = await call(devices.PATCH, { method: "PATCH", token: ownerToken, body: { deviceId: t.deviceA1.id, unlink: true } });
     expect(response.status).toBe(200);
-    expect((response.body.device as { activationCode: string }).activationCode).not.toBe(t.deviceA1.activationCode);
+    expect(response.body.device).toMatchObject({ name: "AAAA22-1", activatedAt: null });
     expect(response.body.device).not.toHaveProperty("secretHash");
+    expect(await auditActions("device.unlinked")).toBe(1);
     expect((await call(deviceMe.GET, { deviceToken: t.deviceA1.token })).status).toBe(401);
+    expect((await call(link.POST, { method: "POST", body: { deviceName: "AAAA22-1", pin: PIN } })).status).toBe(201);
+  });
+});
+
+describe("adding counters", () => {
+  it("names counters after the shop code with the next free number, and refuses a used number", async () => {
+    const ownerToken = await webSession(t.ownerA.id);
+    const listed = await call(devices.GET, { token: ownerToken });
+    expect(listed.body).toMatchObject({ shopCode: "AAAA22", devices: [{ name: "AAAA22-1", counterNumber: 1 }] });
+
+    const next = await call(devices.POST, { method: "POST", token: ownerToken, body: { branchId: t.branchA2.id } });
+    expect(next.status).toBe(201);
+    expect(next.body.device).toMatchObject({ name: "AAAA22-2", counterNumber: 2, branchId: t.branchA2.id });
+
+    const chosen = await call(devices.POST, { method: "POST", token: ownerToken, body: { branchId: t.branchA1.id, counterNumber: 5 } });
+    expect(chosen.body.device).toMatchObject({ name: "AAAA22-5" });
+    const taken = await call(devices.POST, { method: "POST", token: ownerToken, body: { branchId: t.branchA1.id, counterNumber: 2 } });
+    expect(taken.status).toBe(409);
+    expect((await call(devices.POST, { method: "POST", token: ownerToken, body: { branchId: t.branchA1.id, counterNumber: 0 } })).status).toBe(400);
+  });
+
+  it("lets another pharmacy use the same counter numbers", async () => {
+    const response = await call(devices.POST, { method: "POST", token: await webSession(t.ownerB.id), body: { branchId: t.branchB1.id } });
+    expect(response.body.device).toMatchObject({ name: "BBBB22-2" });
   });
 });
 

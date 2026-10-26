@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { AdminOverview, CollectionsDashboard, CreateTenantRequest, DeviceDiagnostics, MigrationStatus, OnboardingStep, SubscriptionStatus, SupportView, TenantDetail, TenantListItem } from "@pharmica/contracts";
 import { db, type Prisma } from "@pharmica/database/client";
 import { daysUntil, periodPrice, renewalDue, roundMoney, subscriptionState } from "@pharmica/domain";
-import { newActivationCode } from "../auth/authorization";
+import { counterName, uniqueShopCode } from "../devices/naming";
 import { hashCredential } from "../auth/credentials";
 import { toRoleName } from "../auth/session";
 import { ensureOpenInvoice, eventItems, invoiceInclude, paymentInclude, refreshSubscription, summarize, toInvoiceSummary, toPaymentSummaries } from "../billing/subscriptions";
@@ -33,13 +33,14 @@ export async function createTenant(input: CreateTenantRequest, actorId: string, 
   const trialDays = input.trialDays ?? plan.trialDays;
   const password = temporaryPassword();
   const credentialHash = await hashCredential(password);
+  const shopCode = await uniqueShopCode();
 
   const organisationId = await db.$transaction(async (tx) => {
-    const organisation = await tx.organisation.create({ data: { name: input.pharmacyName.trim(), contactName: input.contactName.trim(), phone: input.phone?.trim() || null, city: input.city?.trim() || null, onboarding: { migrationStatus: "NOT_STARTED" } } });
+    const organisation = await tx.organisation.create({ data: { name: input.pharmacyName.trim(), shopCode, contactName: input.contactName.trim(), phone: input.phone?.trim() || null, city: input.city?.trim() || null, onboarding: { migrationStatus: "NOT_STARTED" } } });
     const branch = await tx.branch.create({ data: { organisationId: organisation.id, name: input.branchName.trim(), address: input.branchAddress?.trim() || null, phone: input.phone?.trim() || null } });
     const owner = await tx.user.create({ data: { organisationId: organisation.id, name: input.ownerName.trim(), login, credentialHash, mustChangeCredential: true, role: "OWNER" } });
     for (let index = 1; index <= counters; index++) {
-      await tx.device.create({ data: { branchId: branch.id, name: counters === 1 ? "Counter" : `Counter ${index}`, activationCode: newActivationCode() } });
+      await tx.device.create({ data: { branchId: branch.id, name: counterName(shopCode, index), counterNumber: index } });
     }
     // A trial runs for its days; with no trial the shop starts unpaid and the first invoice is due now.
     const subscription = await tx.subscription.create({
@@ -73,7 +74,7 @@ async function checklist(organisationId: string, now: Date): Promise<OnboardingS
   return [
     { key: "owner", label: "Owner signed in and set their own password", done: signedIn > 0 && owners.some((owner) => !owner.mustChangeCredential), detail: owners.some((owner) => owner.mustChangeCredential) ? "Still on the temporary password" : undefined },
     { key: "branch", label: "Branch address and phone for receipts", done: !!(firstBranch?.address && firstBranch.phone) },
-    { key: "counter", label: "A counter is activated", done: activated > 0, detail: `${activated} activated` },
+    { key: "counter", label: "A counter is linked", done: activated > 0, detail: `${activated} linked` },
     { key: "staff", label: "Counter staff have PINs", done: staffWithPins > 0 },
     { key: "migration", label: "Old records moved over (or not needed)", done: migration === "DONE" || migration === "NOT_NEEDED", detail: `${migration.replace("_", " ").toLowerCase()}${imports ? ` · ${imports} import${imports === 1 ? "" : "s"} committed` : ""}` },
     { key: "stock", label: "Stock entered", done: stocked > 0, detail: `${stocked} batches in stock` },
@@ -98,12 +99,11 @@ export async function tenantDetail(organisationId: string, now = new Date()): Pr
   const lastLogins = new Map((await db.auditLog.groupBy({ by: ["userId"], where: { userId: { in: users.map((user) => user.id) }, action: { in: ["auth.login", "auth.pin_login"] } }, _max: { createdAt: true } })).map((row) => [row.userId, row._max.createdAt]));
   const onboarding = onboardingOf(organisation.onboarding);
   return {
-    id: organisation.id, name: organisation.name, contactName: organisation.contactName, phone: organisation.phone, city: organisation.city, isActive: organisation.isActive, createdAt: organisation.createdAt.toISOString(),
+    id: organisation.id, name: organisation.name, shopCode: organisation.shopCode, contactName: organisation.contactName, phone: organisation.phone, city: organisation.city, isActive: organisation.isActive, createdAt: organisation.createdAt.toISOString(),
     migrationStatus: onboarding.migrationStatus ?? "NOT_STARTED", migrationNote: onboarding.migrationNote ?? null,
     branches: branches.map((branch) => ({ id: branch.id, name: branch.name, address: branch.address, phone: branch.phone })),
     users: users.map((user) => ({ id: user.id, name: user.name, login: user.login, role: toRoleName(user.role), branchId: user.branchId, isActive: user.isActive, hasPin: user.pinHash != null, mustChangeCredential: user.mustChangeCredential, lastLoginAt: lastLogins.get(user.id)?.toISOString() ?? null })),
-    // The activation code is only useful (and only shown) until the counter is activated.
-    devices: devices.map((device) => ({ id: device.id, name: device.name, branchId: device.branchId, activationCode: device.secretHash ? null : device.activationCode, activatedAt: device.activatedAt?.toISOString() ?? null, isActive: device.isActive, lastSeenAt: device.lastSeenAt?.toISOString() ?? null })),
+    devices: devices.map((device) => ({ id: device.id, name: device.name, branchId: device.branchId, activatedAt: device.activatedAt?.toISOString() ?? null, isActive: device.isActive, lastSeenAt: device.lastSeenAt?.toISOString() ?? null })),
     subscription: subscription ? summarize(subscription, now) : null,
     invoices: invoices.map(toInvoiceSummary),
     payments: await toPaymentSummaries(payments),
@@ -114,7 +114,7 @@ export async function tenantDetail(organisationId: string, now = new Date()): Pr
 
 export async function tenantList(query: string | null, now = new Date()): Promise<TenantListItem[]> {
   const organisations = await db.organisation.findMany({
-    where: query ? { OR: [{ name: { contains: query, mode: "insensitive" } }, { city: { contains: query, mode: "insensitive" } }, { phone: { contains: query } }, { users: { some: { login: { contains: query.toLowerCase() } } } }] } : undefined,
+    where: query ? { OR: [{ shopCode: query.trim().toUpperCase() }, { name: { contains: query, mode: "insensitive" } }, { city: { contains: query, mode: "insensitive" } }, { phone: { contains: query } }, { users: { some: { login: { contains: query.toLowerCase() } } } }] } : undefined,
     include: { subscription: { include: { plan: true } }, branches: { select: { id: true } } },
     orderBy: { createdAt: "desc" },
     take: 500
@@ -131,7 +131,7 @@ export async function tenantList(query: string | null, now = new Date()): Promis
     const balance = invoices.filter((invoice) => invoice.organisationId === organisation.id).reduce((sum, invoice) => sum + Number(invoice.total) - invoice.payments.filter((payment) => payment.status === "SUCCEEDED").reduce((paid, payment) => paid + Number(payment.amount), 0), 0);
     const lastSeen = mine.map((device) => device.lastSeenAt).filter((at): at is Date => !!at).sort((a, b) => b.getTime() - a.getTime())[0];
     return {
-      id: organisation.id, name: organisation.name, city: organisation.city, phone: organisation.phone, isActive: organisation.isActive, createdAt: organisation.createdAt.toISOString(),
+      id: organisation.id, name: organisation.name, shopCode: organisation.shopCode, city: organisation.city, phone: organisation.phone, isActive: organisation.isActive, createdAt: organisation.createdAt.toISOString(),
       branches: organisation.branches.length, devices: mine.length, activeDevices: mine.filter((device) => device.isActive && device.activatedAt).length,
       status: subscription ? subscriptionState({ isTrial: subscription.isTrial, paidThrough: subscription.paidThrough, cancelledAt: subscription.cancelledAt }, now) : null,
       planName: subscription?.plan.name ?? null, paidThrough: subscription?.paidThrough.toISOString() ?? null, openBalance: roundMoney(Math.max(0, balance)),

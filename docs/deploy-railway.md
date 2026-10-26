@@ -69,17 +69,17 @@ VITE_API_URL=https://${{api.RAILWAY_PUBLIC_DOMAIN}}
 The API address is built into these apps, so after changing it, redeploy them.
 
 ### 7. Deploy
-Deploy `api` first (Deployments → Deploy, or it deploys on its own after settings change). Wait until it is **Active**: its pre-deploy log should end with `Seeded owner@demo.local, cashier@demo.local, admin@pharmica.local, and POS activation code DEMO-POS-001.` Then deploy `owner`, `admin`, and `pos`.
+Deploy `api` first (Deployments → Deploy, or it deploys on its own after settings change). Wait until it is **Active**: its pre-deploy log should end with `Seeded owner@demo.local, cashier@demo.local, admin@pharmica.local, and the counter PHRM24-1 (link it on the POS with a staff PIN).` Then deploy `owner`, `admin`, and `pos`.
 
 ### 8. Check
 - `https://<api address>/api/v1/health` shows `{"status":"ok","service":"pharmica-api",...}`.
 - The admin address: sign in as `admin@pharmica.local` with `SEED_ADMIN_CREDENTIAL`.
 - The owner address: sign in as `owner@demo.local` with `SEED_OWNER_CREDENTIAL`.
-- The POS address: activate with `DEMO-POS-001` (once only; the owner can reset it under Staff & devices for a new code), then sign in with a PIN.
+- The POS address: enter the counter name `PHRM24-1` and a demo PIN. A counter is linked to one computer at a time; the owner adds more under Staff & devices, and uses **Unlink** to move one to another computer.
 
 ## For testers
 - Use **Chrome or Edge** on a computer. With the `*.up.railway.app` addresses, Safari and Firefox block the sign-in cookie.
-- To test a new pharmacy end to end: admin panel → Pharmacies → New pharmacy (note the temporary password, shown once) → owner panel sign-in → Staff & devices for PINs and activation codes → POS.
+- To test a new pharmacy end to end: admin panel → Pharmacies → New pharmacy (note the temporary password, shown once) → owner panel sign-in → Staff & devices for PINs and counters → POS.
 - Offline billing: once the POS has loaded and downloaded its catalogue, switch the internet off and keep billing. Do not reload the POS page while offline: the browser version needs the internet to load the page itself (the Windows app does not).
 
 ## Updating
