@@ -100,7 +100,7 @@ export function CustomersPage({ branchId }: { branchId: string }) {
             <button className="secondary" onClick={() => { const value = window.prompt(`Mobile for ${customer.name}`, customer.phone ?? ""); if (value !== null) void edit(customer, { phone: value }, "Mobile saved"); }}>Edit mobile</button>
             <button className="secondary" onClick={() => void edit(customer, { isActive: !customer.isActive }, customer.isActive ? "Customer deactivated; history kept" : "Customer reactivated")}>{customer.isActive ? "Deactivate" : "Reactivate"}</button>
           </div>
-          <LedgerTable entries={ledger} />
+          <LedgerTable entries={ledger} name={customer.name} />
         </div>}
       </div>)}
       {!visible.length && <p className="page-note">Nobody here.</p>}

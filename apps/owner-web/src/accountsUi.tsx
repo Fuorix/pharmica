@@ -11,10 +11,11 @@ export function AgeingBar({ buckets }: { buckets: AgeBuckets }) {
   return <span className="ageing">{parts.filter(([, amount]) => amount > 0).map(([label, amount, tone]) => <em key={label} className={tone}>{label}d {money(amount)}</em>)}</span>;
 }
 
-export function LedgerTable({ entries }: { entries: LedgerLine[] }) {
-  return <table className="detail-table"><thead><tr><th>Date</th><th>What</th><th>Amount</th><th>Balance</th><th>By</th><th>Details</th></tr></thead><tbody>
+export function LedgerTable({ entries, name }: { entries: LedgerLine[]; name: string }) {
+  return <table className="detail-table"><thead><tr><th>Date</th><th>Name</th><th>What</th><th>Amount</th><th>Balance</th><th>By</th><th>Details</th></tr></thead><tbody>
     {entries.map((entry) => <tr key={entry.id}>
       <td>{new Date(entry.at).toLocaleString("en-PK", { dateStyle: "short", timeStyle: "short" })}</td>
+      <td>{name}</td>
       <td>{typeLabels[entry.type] ?? entry.type}</td>
       <td className={entry.amount < 0 ? "credit" : ""}>{entry.amount < 0 ? `−${money(-entry.amount)}` : money(entry.amount)}</td>
       <td>{money(entry.balanceAfter)}</td>
