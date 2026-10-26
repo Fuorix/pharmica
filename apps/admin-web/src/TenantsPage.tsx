@@ -1,4 +1,4 @@
-import { FormEvent, Fragment, useState } from "react";
+import { FormEvent, useState } from "react";
 import type { CreateTenantResponse, PlanSummary, TenantListItem } from "@pharmica/contracts";
 import { TenantDetailPage } from "./TenantDetailPage";
 import { ago, day, Message, money, send, StatusChip, useApi } from "./ui";
@@ -19,11 +19,11 @@ export function TenantsPage() {
     <header className="page-head"><div><p className="eyebrow">TENANTS</p><h2>Pharmacies</h2></div><button onClick={() => { setCreating(!creating); setCreated(null); }}>{creating ? "Close" : "New pharmacy"}</button></header>
     {creating && !created && <CreateTenant onCreated={(response) => { setCreated(response); void reload(); }} />}
     {created && <Created response={created} onOpen={() => { setOpenId(created.tenant.id); setCreating(false); setCreated(null); }} />}
-    <input className="search" placeholder="Search by name, city, phone, or owner login" value={query} onChange={(event) => setQuery(event.target.value)} />
+    <input className="search" placeholder="Search by name, shop ID, city, phone, or owner login" value={query} onChange={(event) => setQuery(event.target.value)} />
     {error && <p className="message">{error}</p>}
     <table className="grid"><thead><tr><th>Pharmacy</th><th>Subscription</th><th>Counters</th><th>Last seen</th><th>Onboarding</th><th>Owes</th></tr></thead><tbody>
       {data?.tenants.map((tenant) => <tr key={tenant.id} className="clickable" onClick={() => setOpenId(tenant.id)}>
-        <td><strong>{tenant.name}</strong><small>{[tenant.city, tenant.phone].filter(Boolean).join(" · ")}{tenant.isActive ? "" : " · SUSPENDED"}</small></td>
+        <td><strong>{tenant.name} <span className="shop-code">{tenant.shopCode}</span></strong><small>{[tenant.city, tenant.phone].filter(Boolean).join(" · ")}{tenant.isActive ? "" : " · SUSPENDED"}</small></td>
         <td><StatusChip status={tenant.status} /><small>{tenant.planName ?? ""}{tenant.paidThrough ? ` · to ${day(tenant.paidThrough)}` : ""}</small></td>
         <td>{tenant.activeDevices} / {tenant.devices}<small>{tenant.branches} branch{tenant.branches === 1 ? "" : "es"}</small></td>
         <td>{ago(tenant.lastSeenAt)}</td>
@@ -82,7 +82,8 @@ function Created({ response, onOpen }: { response: CreateTenantResponse; onOpen:
     <dl>
       <dt>Owner login</dt><dd><code>{owner?.login}</code></dd>
       <dt>Temporary password</dt><dd><code className="secret">{response.temporaryPassword}</code></dd>
-      {response.tenant.devices.map((device) => <Fragment key={device.id}><dt>{device.name} activation code</dt><dd><code>{device.activationCode}</code></dd></Fragment>)}
+      <dt>Shop ID</dt><dd><code>{response.tenant.shopCode}</code></dd>
+      <dt>Counters</dt><dd>{response.tenant.devices.map((device) => <code key={device.id}>{device.name}</code>)} <small>set up on each computer with a staff PIN</small></dd>
     </dl>
     <button onClick={onOpen}>Open pharmacy</button>
   </div>;

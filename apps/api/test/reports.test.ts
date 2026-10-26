@@ -223,9 +223,9 @@ describe("data export", () => {
     expect(data.sales).toHaveLength(1);
     expect(data.saleLines[0]).toMatchObject({ unitCost: "80" });
     expect(data.users.every((user) => !("credentialHash" in user) && !("pinHash" in user))).toBe(true);
-    expect(data.devices.every((device) => !("secretHash" in device) && !("activationCode" in device))).toBe(true);
+    expect(data.devices.every((device) => !("secretHash" in device))).toBe(true);
     expect(data).not.toHaveProperty("sessions");
-    for (const secret of [...(await db.user.findMany()).flatMap((user) => [user.credentialHash, user.pinHash]), ...(await db.device.findMany()).flatMap((device) => [device.secretHash, device.activationCode])]) {
+    for (const secret of [...(await db.user.findMany()).flatMap((user) => [user.credentialHash, user.pinHash]), ...(await db.device.findMany()).map((device) => device.secretHash)]) {
       if (secret) expect(text).not.toContain(secret);
     }
     expect(text).not.toContain("Org B");

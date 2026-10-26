@@ -27,7 +27,7 @@ export async function requireAuth(
     return { response: apiError(403, "FORBIDDEN", "You do not have permission for this action") };
   }
   if (options.device && !user.deviceId) {
-    return { response: apiError(403, "DEVICE_SESSION_REQUIRED", "This action must be performed from an activated POS device") };
+    return { response: apiError(403, "DEVICE_SESSION_REQUIRED", "This action must be performed from a linked POS counter") };
   }
   return { user };
 }
@@ -45,10 +45,6 @@ export async function requireBranch(user: AuthUser, requestedBranchId: string | 
   const branch = await db.branch.findUnique({ where: { id: branchId } });
   if (!branch || !canAccessScope(user, branch.organisationId, branch.id)) return { response: apiError(403, "FORBIDDEN", "Branch access denied") };
   return { branch };
-}
-
-export function newActivationCode(): string {
-  return randomBytes(6).toString("hex").toUpperCase();
 }
 
 export function newDeviceSecret(): { secret: string; secretHash: string } {

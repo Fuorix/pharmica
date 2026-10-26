@@ -22,9 +22,9 @@ export async function stockBatch(productId: string, data: { batchNo: string; exp
 export const PASSWORD = "correct-horse-battery";
 export const PIN = "4321";
 
-async function makeDevice(branchId: string, name: string) {
+async function makeDevice(branchId: string, shopCode: string, counterNumber: number) {
   const { secret, secretHash } = newDeviceSecret();
-  const device = await db.device.create({ data: { branchId, name, activationCode: `${name}-CODE`.toUpperCase(), secretHash, activatedAt: new Date() } });
+  const device = await db.device.create({ data: { branchId, name: `${shopCode}-${counterNumber}`, counterNumber, secretHash, activatedAt: new Date() } });
   return { ...device, token: `${device.id}.${secret}` };
 }
 
@@ -36,8 +36,8 @@ export async function seedTenants() {
   const credentialHash = await hashCredential(PASSWORD);
   const pinHash = await hashCredential(PIN);
 
-  const orgA = await db.organisation.create({ data: { name: "Org A" } });
-  const orgB = await db.organisation.create({ data: { name: "Org B" } });
+  const orgA = await db.organisation.create({ data: { name: "Org A", shopCode: "AAAA22" } });
+  const orgB = await db.organisation.create({ data: { name: "Org B", shopCode: "BBBB22" } });
   const branchA1 = await db.branch.create({ data: { organisationId: orgA.id, name: "A1" } });
   const branchA2 = await db.branch.create({ data: { organisationId: orgA.id, name: "A2" } });
   const branchB1 = await db.branch.create({ data: { organisationId: orgB.id, name: "B1" } });
@@ -58,8 +58,8 @@ export async function seedTenants() {
   const ownerB = await user({ login: "owner-b", role: "OWNER", organisationId: orgB.id });
   const admin = await user({ login: "admin", role: "SUPER_ADMIN" });
 
-  const deviceA1 = await makeDevice(branchA1.id, "pos-a1");
-  const deviceB1 = await makeDevice(branchB1.id, "pos-b1");
+  const deviceA1 = await makeDevice(branchA1.id, "AAAA22", 1);
+  const deviceB1 = await makeDevice(branchB1.id, "BBBB22", 1);
 
   const master = await db.masterProduct.create({ data: { name: "Panadol 500mg", generic: "Paracetamol", unitsPerPack: 10, tabletsPerStrip: 10, officialRetailPrice: 100 } });
   const productA1 = await db.product.create({ data: { branchId: branchA1.id, masterProductId: master.id, name: master.name } });

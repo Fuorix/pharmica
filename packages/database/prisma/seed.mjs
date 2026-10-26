@@ -18,10 +18,12 @@ const adminCredentialHash = await hash(process.env.SEED_ADMIN_CREDENTIAL || "cha
 const ownerPinHash = await hash(process.env.SEED_OWNER_PIN || "1111");
 const cashierPinHash = await hash(process.env.SEED_CASHIER_PIN || "1234");
 
+// A fixed shop code, so the demo counter is always PHRM24-1.
+const SHOP_CODE = "PHRM24";
 const organisation = await db.organisation.upsert({
   where: { id: "demo-organisation" },
-  update: {},
-  create: { id: "demo-organisation", name: "Demo Pharmacy" }
+  update: { shopCode: SHOP_CODE },
+  create: { id: "demo-organisation", name: "Demo Pharmacy", shopCode: SHOP_CODE }
 });
 
 // The demo pharmacy runs on a Pro trial; the plans themselves come from the tenants_billing migration.
@@ -40,8 +42,13 @@ const branch = await db.branch.upsert({
 await db.device.upsert({
   where: { id: "demo-device" },
   update: { isActive: true },
-  create: { id: "demo-device", branchId: branch.id, name: "Demo POS", activationCode: "DEMO-POS-001" }
+  create: { id: "demo-device", branchId: branch.id, name: `${SHOP_CODE}-1`, counterNumber: 1 }
 });
+// Counters added later keep their numbers but follow the fixed shop code.
+for (const device of await db.device.findMany({ where: { branch: { organisationId: organisation.id } } })) {
+  const name = `${SHOP_CODE}-${device.counterNumber}`;
+  if (device.name !== name) await db.device.update({ where: { id: device.id }, data: { name } });
+}
 
 await db.user.upsert({
   where: { login: "owner@demo.local" },
@@ -167,5 +174,5 @@ for (const product of await db.product.findMany({ where: { branchId: branch.id, 
   await setDemoStock(product, "DEMO-001", { quantity: 0 });
 }
 
-console.log("Seeded owner@demo.local, cashier@demo.local, admin@pharmica.local, and POS activation code DEMO-POS-001.");
+console.log("Seeded owner@demo.local, cashier@demo.local, admin@pharmica.local, and the counter PHRM24-1 (link it on the POS with a staff PIN).");
 await db.$disconnect();

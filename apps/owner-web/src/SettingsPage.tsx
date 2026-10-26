@@ -3,6 +3,7 @@ import type { BranchSettings } from "@pharmica/contracts";
 import { pkToday, saveBlob } from "./reportsUi";
 import { apiFetch, errorMessage, jsonBody } from "./session";
 
+export type Pharmacy = { name: string; shopCode: string };
 export type BranchDetails = { id: string; name: string; address?: string | null; phone?: string | null; settings?: BranchSettings };
 
 const TABLES: Array<[string, string]> = [
@@ -13,7 +14,7 @@ const TABLES: Array<[string, string]> = [
 ];
 
 /** Per-branch receipt text and alert windows, and a full export of the shop's data. */
-export function SettingsPage({ branch, onSaved }: { branch: BranchDetails; onSaved: () => void }) {
+export function SettingsPage({ branch, pharmacy, onSaved }: { branch: BranchDetails; pharmacy: Pharmacy | null; onSaved: () => void }) {
   const [form, setForm] = useState({ address: "", phone: "", receiptHeader: "", receiptFooter: "", nearExpiryDays: "90", overdueDays: "30", largeDiscountPercent: "10" });
   const [message, setMessage] = useState("");
   const [table, setTable] = useState("sales");
@@ -58,6 +59,13 @@ export function SettingsPage({ branch, onSaved }: { branch: BranchDetails; onSav
 
   return <>
     <div className="page-heading"><h1>Settings</h1><span className="page-note">{message}</span></div>
+    {pharmacy && <article className="panel">
+      <div className="panel-heading"><h2>{pharmacy.name}</h2></div>
+      <div className="shop-code-box">
+        <div><span>Your shop ID</span><strong>{pharmacy.shopCode}</strong></div>
+        <p>Every counter is named after it (like <b>{pharmacy.shopCode}-1</b>). Pharmica support may also ask for it.</p>
+      </div>
+    </article>}
     <article className="panel">
       <div className="panel-heading"><h2>{branch.name}: receipt and alerts</h2></div>
       <form className="settings-form" onSubmit={save}>

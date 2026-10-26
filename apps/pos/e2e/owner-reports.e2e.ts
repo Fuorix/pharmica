@@ -10,7 +10,7 @@ const BRANCH = "e2e-pos-branch";
 test("owner dashboard, expenses, profit and loss, settings, and export", async ({ page, request }) => {
   await page.goto(OWNER_WEB);
   await page.getByLabel("Login").fill("e2e-pos-owner@test.local");
-  await page.getByLabel("Password").fill("e2e-password-123");
+  await page.getByRole("textbox", { name: /^Password/ }).fill("e2e-password-123");
   await page.getByRole("button", { name: "Sign in" }).click();
 
   await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
@@ -46,7 +46,7 @@ test("owner dashboard, expenses, profit and loss, settings, and export", async (
   await page.getByRole("button", { name: "Download everything (JSON)" }).click();
   const download = await downloading;
   const text = readFileSync(await download.path(), "utf8");
-  for (const secret of ["credentialHash", "pinHash", "secretHash", "activationCode", "E2EPOSCODE01"]) expect(text).not.toContain(secret);
+  for (const secret of ["credentialHash", "pinHash", "secretHash"]) expect(text).not.toContain(secret);
   const data = JSON.parse(text) as { expenses: Array<{ note: string; amount: string }> };
   expect(data.expenses).toContainEqual(expect.objectContaining({ note: "E2E rent", amount: "1234" }));
 

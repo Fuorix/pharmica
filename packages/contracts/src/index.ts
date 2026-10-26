@@ -33,14 +33,18 @@ export interface AuthResponse {
 /** Header carrying `<deviceId>.<deviceSecret>` for device-authenticated POS requests. */
 export const DEVICE_TOKEN_HEADER = "x-device-token";
 
-export interface ActivateDeviceRequest {
-  activationCode: string;
+/** Links a computer to a counter: the counter name (`<shopCode>-<number>`, e.g. `K7P2QX-1`) and a PIN of a staff member of its branch. */
+export interface LinkDeviceRequest {
+  deviceName: string;
+  pin: string;
 }
 
-export interface ActivateDeviceResponse {
+export interface LinkDeviceResponse {
   device: { id: string; name: string; branchId: string; branchName: string };
   /** `<deviceId>.<secret>`; shown once, stored by the POS. */
   deviceToken: string;
+  /** The staff member whose PIN linked the counter, so the POS can sign them straight in. */
+  userId: string;
 }
 
 export interface DeviceUser {
@@ -296,7 +300,7 @@ export interface PosCustomer {
 
 export interface PosSnapshot {
   generatedAt: string;
-  device: ActivateDeviceResponse["device"];
+  device: LinkDeviceResponse["device"];
   organisationName: string;
   staff: PosStaffMember[];
   products: CatalogueProduct[];
@@ -775,6 +779,7 @@ export type MigrationStatus = "NOT_STARTED" | "IN_PROGRESS" | "DONE" | "NOT_NEED
 export interface TenantListItem {
   id: string;
   name: string;
+  shopCode: string;
   city: string | null;
   phone: string | null;
   isActive: boolean;
@@ -801,6 +806,7 @@ export interface OnboardingStep {
 export interface TenantDetail {
   id: string;
   name: string;
+  shopCode: string;
   contactName: string | null;
   phone: string | null;
   city: string | null;
@@ -810,7 +816,7 @@ export interface TenantDetail {
   migrationNote: string | null;
   branches: Array<{ id: string; name: string; address: string | null; phone: string | null }>;
   users: Array<{ id: string; name: string; login: string; role: UserRole; branchId: string | null; isActive: boolean; hasPin: boolean; mustChangeCredential: boolean; lastLoginAt: string | null }>;
-  devices: Array<{ id: string; name: string; branchId: string; activationCode: string | null; activatedAt: string | null; isActive: boolean; lastSeenAt: string | null }>;
+  devices: Array<{ id: string; name: string; branchId: string; activatedAt: string | null; isActive: boolean; lastSeenAt: string | null }>;
   subscription: SubscriptionSummary | null;
   invoices: InvoiceSummary[];
   payments: PaymentSummary[];

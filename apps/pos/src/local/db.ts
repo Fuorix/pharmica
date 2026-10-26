@@ -2,7 +2,7 @@
  * The counter's local database: JSON documents grouped into collections. In the desktop app it is SQLite
  * (through the Tauri SQL plugin); in a browser it is IndexedDB. Both survive restarts and power loss.
  */
-export type Collection = "meta" | "outbox" | "sales" | "held" | "pins" | "customers" | "purchases" | "payments" | "master";
+export type Collection = "meta" | "outbox" | "sales" | "pins" | "customers" | "purchases" | "payments" | "master";
 
 export interface Entry {
   collection: Collection;

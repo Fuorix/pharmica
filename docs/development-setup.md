@@ -53,16 +53,16 @@ Columns: `name, brand, generic, company, dosageForm, strength, unitsPerPack` (st
 
 ## POS sign-in
 
-1. The owner registers a counter under **Staff & devices** in the owner panel, which shows a one-time activation code. The seed provides `DEMO-POS-001` for the demo counter.
-2. On first start, the POS asks for that code and stores a device token. To move a counter to a new PC, the owner uses **Reset** to issue a new code.
+1. Every pharmacy has a permanent 6-character **shop ID** (no look-alike characters such as 0/O or 1/I), shown in the owner panel sidebar, on **Staff & devices** and **Settings**, and in the admin panel. Counters are named after it: `<shop ID>-<number>`, such as `K7P2QX-1`. The owner adds a counter under **Staff & devices** by picking only its number. The seed's demo pharmacy is `PHRM24`, with the counter `PHRM24-1`.
+2. On first start, the POS asks for the counter name and the PIN of any staff member of that counter's branch; it stores a device token and signs that person in. Each counter is linked to one computer at a time: to move it to a new PC, the owner uses **Unlink**. Wrong attempts lock that counter name for 15 minutes.
 3. Staff pick their name (or press its number) and enter their PIN. The session is bound to that device; **Lock** (F12) signs out.
 4. Deactivating a device or user in the owner panel ends their sessions immediately. Five wrong passwords or PINs lock that login for 15 minutes.
 
 ## Offline billing
 
-The POS keeps its own database (SQLite in the desktop app, IndexedDB in a browser) holding the catalogue, stock by batch, customers, staff, sales, held bills, and an outbox. Every sale, void, return, shift, and new customer is saved there first, so the counter keeps billing with no internet. The outbox uploads in order to `POST /api/v1/pos/sync` whenever the server is reachable (every 20 seconds, and immediately when the network returns), authenticated by the device token so it also drains while the counter is locked. After each upload the counter refreshes its snapshot from `GET /api/v1/pos/snapshot`.
+The POS keeps its own database (SQLite in the desktop app, IndexedDB in a browser) holding the catalogue, stock by batch, customers, staff, sales, and an outbox. Every sale, void, return, shift, and new customer is saved there first, so the counter keeps billing with no internet. The outbox uploads in order to `POST /api/v1/pos/sync` whenever the server is reachable (every 20 seconds, and immediately when the network returns), authenticated by the device token so it also drains while the counter is locked. After each upload the counter refreshes its snapshot from `GET /api/v1/pos/snapshot`.
 
-- The counter needs the internet twice: to activate, and for each cashier's first PIN sign-in on it. After that, cashiers can sign in offline.
+- The counter needs the internet twice: to set it up, and for each cashier's first PIN sign-in on it. After that, cashiers can sign in offline.
 - The server applies each upload exactly once. It rejects anything that cannot be legitimate (unknown stock, a price above a batch's printed retail price), and accepts but flags what the owner should review (`OVERSOLD` when two counters sold the same stock offline, `DISCOUNT_OVER_LIMIT`, `CREDIT_LIMIT_EXCEEDED`). Rejected uploads stay visible on the counter under the sync status.
 - Press F1 on the counter for the keyboard shortcuts.
 
@@ -123,7 +123,7 @@ Every report states the days and branches it covers. Days are Pakistan calendar 
 - **Alerts** come from the audit log: voids, returns, discounts at or above the branch's alert percent, discounts over a cashier's limit, deleted lines, the drawer opened without a sale, controlled drugs without a prescription, oversold stock, write-offs, and three or more failed sign-ins.
 - **Reorder**: stock lasts fewer than the chosen days at the last 30 days' sales rate, or is below its alert level; the suggestion tops it up to 30 days of sales. **Dead stock**: in stock but not sold for the chosen number of days (90 by default).
 - **Branch settings** (receipt header and footer, address, phone, near-expiry and overdue days, large-discount alert) are stored on the branch. Counters print the receipt text after their next sync.
-- **Data export** (`GET /api/v1/export`): every table as JSON, or one table as CSV. Password and PIN hashes, device secrets, activation codes, and sessions are never exported.
+- **Data export** (`GET /api/v1/export`): every table as JSON, or one table as CSV. Password and PIN hashes, device secrets, and sessions are never exported.
 
 The tax report and FBR settings are not in the MVP.
 
@@ -131,10 +131,10 @@ The tax report and FBR settings are not in the MVP.
 
 Everything under `/api/v1/admin` is for Pharmica staff only; owners and cashiers get 403 on every admin route, and a test walks all of them to prove it.
 
-- **Onboarding a pharmacy** creates the organisation, its first branch, the owner, the subscription, and the counters in one step. The owner gets a temporary password, shown once. Until they choose their own, every API call except changing the password returns `CREDENTIAL_CHANGE_REQUIRED`. Counter activation codes are shown until each counter is activated.
-- **Go-live checklist**: the owner has signed in and set a password; the branch address and phone are set; a counter is activated; staff have PINs; the data migration is done or not needed (set by staff); stock is entered; the first sale has reached the cloud; the first payment has been received.
+- **Onboarding a pharmacy** creates the organisation, its first branch, the owner, the subscription, and the counters in one step. The owner gets a temporary password, shown once. Until they choose their own, every API call except changing the password returns `CREDENTIAL_CHANGE_REQUIRED`. The summary shows the shop ID and the counter names to set up with a staff PIN.
+- **Go-live checklist**: the owner has signed in and set a password; the branch address and phone are set; a counter is linked; staff have PINs; the data migration is done or not needed (set by staff); stock is entered; the first sale has reached the cloud; the first payment has been received.
 - **Suspending** a pharmacy (a reason is required) signs everyone out and stops cloud sync. Counters keep billing offline, and they are told sync is paused, not that they were deactivated. Unpaid subscriptions are not suspended; grace mode handles them.
-- **Support view**: each counter's last report (pending and rejected uploads, last error, app version), failed, conflicting, or flagged uploads, and the pharmacy's audit history, paged. It is read-only and never shows password hashes, device secrets, or used activation codes.
+- **Support view**: each counter's last report (pending and rejected uploads, last error, app version), failed, conflicting, or flagged uploads, and the pharmacy's audit history, paged. It is read-only and never shows password hashes or device secrets.
 - **Catalogue curation**: nothing reaches shops until a person reviews it.
   - Price reports from shops are grouped by medicine and printed price across all shops. Publishing one records a `SHOP_REPORT` price; dismissing needs a reason.
   - SRO and price-list CSV uploads are matched by barcode, then DRAP registration number, then exact name. Rows are flagged as unchanged, not found, ambiguous, or invalid. A reviewer can match a row by hand or skip it, then publishes or rejects the whole file. A future effective date schedules the price instead of applying it now.

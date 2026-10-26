@@ -215,3 +215,7 @@ progress::-moz-progress-bar { background: var(--brand); border-radius: 999px; }
 }
 @media (max-width: 700px) { .stats { grid-template-columns: 1fr; } .workspace header { display: block; } .workspace h2, .page-head h2 { font-size: 24px; } }
 @media (prefers-reduced-motion: reduce) { button { transition: none; } }
+
+/* A pharmacy's shop ID next to its name, and the counter names on the onboarding summary. */
+.shop-code { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--brand-soft); color: var(--brand-dark); font-size: 12px; font-weight: 700; letter-spacing: .06em; vertical-align: middle; }
+.created dd code + code { margin-left: 6px; }

@@ -26,7 +26,7 @@ export function OPTIONS(request: Request): Response { return corsOptions(request
 /** A counter reports its sync health after each sync, so the owner and support can see a stuck queue. */
 export async function POST(request: Request): Promise<Response> {
   const device = await authenticateDevice(request);
-  if (!device) return withCors(apiError(401, "DEVICE_NOT_ACTIVATED", "This POS device is not activated or has been deactivated"), request);
+  if (!device) return withCors(apiError(401, "DEVICE_NOT_LINKED", "This counter is not linked or has been turned off"), request);
   const parsed = await parseBody(request, diagnosticsSchema);
   if ("response" in parsed) return withCors(parsed.response, request);
   await db.device.update({ where: { id: device.id }, data: { diagnostics: parsed.data as Prisma.InputJsonValue, diagnosticsAt: new Date(), lastSeenAt: new Date() } });

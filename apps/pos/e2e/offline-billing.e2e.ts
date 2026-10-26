@@ -23,11 +23,11 @@ test("a counter bills, voids, and returns with the internet down, survives a res
     window.print = () => { (window as unknown as { prints: number }).prints++; };
   });
 
-  // Activate the counter once (needs the internet), sign in, and open the shift.
+  // Set the counter up once (needs the internet) with its name and the cashier's PIN, which also signs them in; then open the shift.
   await page.goto("/");
-  await page.getByLabel("Activation code").fill("E2EPOSCODE01");
+  await page.getByLabel("Counter name").fill("e2etst-1");
+  await page.getByLabel("Your PIN").fill("1234");
   await page.keyboard.press("Enter");
-  await signInCashier(page);
   await page.getByLabel("Opening cash (PKR)").fill("5000");
   await page.keyboard.press("Enter");
   await expect(notice(page)).toContainText("Shift opened");
@@ -90,8 +90,11 @@ test("a counter bills, voids, and returns with the internet down, survives a res
   await expect(notice(page)).toContainText("Refund PKR 250.00 by cash");
   await expect(page.locator(".sync-pill")).toContainText("to upload");
 
-  // Restart the app while still offline: nothing is lost and the cashier can sign in offline.
+  // Restart the app while still offline: nothing is lost and the cashier is still signed in.
+  // Locking and signing back in also works offline, with the PIN this counter remembered.
   await page.reload();
+  await expect(page.getByLabel("Search")).toBeFocused();
+  await page.keyboard.press("F12");
   await signInCashier(page);
   await expect(page.getByLabel("Search")).toBeFocused();
   await expect(page.locator(".sync-pill")).toContainText("Offline · 4 to upload");

@@ -7,7 +7,7 @@ import { ImportWizard } from "./ImportWizard";
 import { PurchasesPage } from "./PurchasesPage";
 import { RegisterPage } from "./RegisterPage";
 import { ReportsPage } from "./ReportsPage";
-import { SettingsPage, type BranchDetails } from "./SettingsPage";
+import { SettingsPage, type BranchDetails, type Pharmacy } from "./SettingsPage";
 import { SubscriptionPage, subscriptionNotice } from "./SubscriptionPage";
 import type { BillingOverview } from "@pharmica/contracts";
 import { SuppliersPage } from "./SuppliersPage";
@@ -47,6 +47,8 @@ const ALL_BRANCH_PAGES: Page[] = ["dashboard", "reports", "expenses"];
 export function App() {
   const { user, signOut } = useOwnerSession();
   const [branches, setBranches] = useState<BranchDetails[]>([]);
+  const [pharmacy, setPharmacy] = useState<Pharmacy | null>(null);
+  const [copied, setCopied] = useState(false);
   const [branchId, setBranchId] = useState("");
   const [allBranches, setAllBranches] = useState(true);
   const [page, setPage] = useState<Page>("dashboard");
@@ -55,7 +57,9 @@ export function App() {
   const loadBranches = useCallback(() => {
     apiFetch("/api/v1/branches").then(async (response) => {
       if (!response.ok) return setBranchError(await errorMessage(response, "Could not load your branches"));
-      const loaded = (await response.json()).branches as BranchDetails[];
+      const body = await response.json() as { branches: BranchDetails[]; pharmacy: Pharmacy | null };
+      const loaded = body.branches;
+      setPharmacy(body.pharmacy);
       setBranchError("");
       setBranches(loaded);
       setBranchId((current) => current || loaded[0]?.id || "");
@@ -77,6 +81,10 @@ export function App() {
   return <div className="app">
     <aside className="sidebar no-print">
       <div className="brand"><span className="brand-mark" aria-hidden="true">+</span><div><strong>Pharmica</strong><small>Owner panel</small></div></div>
+      {pharmacy && <div className="shop-id">
+        <strong title={pharmacy.name}>{pharmacy.name}</strong>
+        <span>Shop ID <b>{pharmacy.shopCode}</b> <button className="link" onClick={() => { void navigator.clipboard?.writeText(pharmacy.shopCode).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); }}>{copied ? "Copied" : "Copy"}</button></span>
+      </div>}
       {page !== "staff" && branches.length > 1 && <select className="branch-select" aria-label="Branch" value={canShowAll && allBranches ? "all" : branchId} onChange={(event) => {
         if (event.target.value === "all") return setAllBranches(true);
         setAllBranches(false);
@@ -107,7 +115,7 @@ export function App() {
     {page === "customers" && branchId && <CustomersPage branchId={branchId} />}
     {page === "register" && branchId && <RegisterPage branchId={branchId} />}
     {page === "staff" && branches.length > 0 && <StaffPage branches={branches} />}
-    {page === "settings" && branch && <SettingsPage branch={branch} onSaved={loadBranches} />}
+    {page === "settings" && branch && <SettingsPage branch={branch} pharmacy={pharmacy} onSaved={loadBranches} />}
     {page === "subscription" && <SubscriptionPage onChanged={loadBilling} />}
     {page === "import" && branches.length > 0 && <><div className="page-heading"><h1>Import data</h1></div><ImportWizard branches={branches} /></>}
     </main>

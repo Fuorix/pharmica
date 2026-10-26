@@ -1,10 +1,10 @@
 import { createContext, useContext, useSyncExternalStore } from "react";
-import { DEVICE_TOKEN_HEADER, type ActivateDeviceResponse, type PosStaffMember } from "@pharmica/contracts";
+import { DEVICE_TOKEN_HEADER, type LinkDeviceResponse, type PosStaffMember } from "@pharmica/contracts";
 import type { EngineState, PosEngine } from "./local/engine";
 
 export const apiUrl = import.meta.env.VITE_API_URL;
 
-export type PosDevice = ActivateDeviceResponse["device"];
+export type PosDevice = LinkDeviceResponse["device"];
 type StoredDevice = { deviceToken: string; device: PosDevice };
 
 const DEVICE_KEY = "pharmica_device";
@@ -26,7 +26,7 @@ export function saveDevice(value: StoredDevice | null): void {
     if (value) localStorage.setItem(DEVICE_KEY, JSON.stringify(value));
     else localStorage.removeItem(DEVICE_KEY);
   } catch {
-    // Without storage the counter asks for activation again on restart.
+    // Without storage the counter has to be linked again on restart.
   }
 }
 

@@ -115,8 +115,8 @@ describe("counter health and sync issues", () => {
     const open = await call(issues.GET, { path: `/api/v1/sync/issues?branchId=${t.branchA1.id}`, token: owner });
     const list = open.body.issues as SyncIssue[];
     expect(list.map((issue) => [issue.status, issue.flags, issue.summary.startsWith("Receipt"), issue.userName, issue.deviceName]).sort()).toEqual([
-      ["flagged", ["OVERSOLD"], true, "cashier-a1", "pos-a1"],
-      ["rejected", [], true, "cashier-a1", "pos-a1"]
+      ["flagged", ["OVERSOLD"], true, "cashier-a1", "AAAA22-1"],
+      ["rejected", [], true, "cashier-a1", "AAAA22-1"]
     ]);
 
     expect((await call(issues.PATCH, { method: "PATCH", token: owner, body: { operationId: oversold.id, note: "Counted the shelf; stock corrected" } })).status).toBe(204);

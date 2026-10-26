@@ -14,6 +14,7 @@ export function CataloguePage({ branchId }: { branchId: string }) {
   const [masterMatches, setMasterMatches] = useState<MasterProductSummary[]>([]);
   const [message, setMessage] = useState("");
   const [item, setItem] = useState(emptyItem);
+  const [adding, setAdding] = useState(false);
   const [history, setHistory] = useState<{ product: CatalogueProduct; prices: PriceHistory } | null>(null);
 
   const load = useCallback(async () => {
@@ -62,11 +63,25 @@ export function CataloguePage({ branchId }: { branchId: string }) {
       unitsPerPack: Number(item.unitsPerPack) || 1,
       retailPrice: item.retailPrice === "" ? undefined : Number(item.retailPrice)
     }, `${item.name} added to the shop catalogue`);
-    if (ok) setItem(emptyItem);
+    if (ok) { setItem(emptyItem); setAdding(false); }
   }
 
   return <>
-    <div className="page-heading"><h1>Catalogue</h1><span className="page-note">{message}</span></div>
+    <div className="page-heading"><h1>Catalogue</h1><span className="page-note">{message}</span>{!adding && <button onClick={() => setAdding(true)}>Add item</button>}</div>
+    {adding && <article className="panel add-item-panel">
+      <div className="panel-heading"><h2>Add a shop item</h2><span>For items not on the medicine list, such as cosmetics or baby products</span></div>
+      <form className="inventory-form" onSubmit={addItem}>
+        <label className="field">Item name<input required autoFocus value={item.name} onChange={(event) => setItem({ ...item, name: event.target.value })} /></label>
+        <label className="field">Category<select value={item.category} onChange={(event) => setItem({ ...item, category: event.target.value as ProductCategory })}>
+          <option value="cosmetic">Cosmetic</option><option value="surgical">Surgical</option><option value="baby">Baby</option><option value="general">General</option><option value="medicine">Medicine (unlisted)</option>
+        </select></label>
+        <label className="field">Company (optional)<input value={item.company} onChange={(event) => setItem({ ...item, company: event.target.value })} /></label>
+        <label className="field">Barcode (optional)<input value={item.barcode} onChange={(event) => setItem({ ...item, barcode: event.target.value })} /></label>
+        <label className="field">Pieces per pack<input type="number" min="1" value={item.unitsPerPack} onChange={(event) => setItem({ ...item, unitsPerPack: Number(event.target.value) })} /></label>
+        <label className="field">Price per pack (PKR)<input type="number" min="0" step="0.01" value={item.retailPrice} onChange={(event) => setItem({ ...item, retailPrice: event.target.value })} /></label>
+        <div className="form-buttons"><button type="submit">Save item</button><button type="button" className="secondary" onClick={() => { setAdding(false); setItem(emptyItem); }}>Cancel</button></div>
+      </form>
+    </article>}
     <PriceUpdatesPanel branchId={branchId} onChanged={() => void load()} />
     <input className="catalogue-search" placeholder="Search by brand, salt, company, or barcode" value={query} onChange={(event) => setQuery(event.target.value)} />
     <article className="panel catalogue-table">
@@ -97,28 +112,12 @@ export function CataloguePage({ branchId }: { branchId: string }) {
       </div>)}
     </article>}
 
-    <section className="content-grid">
-      <article className="panel">
-        <div className="panel-heading"><h2>From the medicine list</h2><span>{query.trim() ? `${masterMatches.length} not stocked here` : "Search to find more"}</span></div>
-        {masterMatches.map((match) => <div className="staff-row" key={match.id}>
-          <div><strong>{match.name}</strong><span>{[match.generic, match.company, match.strength, money(match.officialRetailPrice)].filter(Boolean).join(" · ")}</span></div>
-          <button className="secondary" onClick={() => void send("POST", { branchId, masterProductId: match.id }, `${match.name} added; receive stock to start selling it`)}>Add to shop</button>
-        </div>)}
-      </article>
-      <article className="panel">
-        <div className="panel-heading"><h2>Add a shop item</h2><span>Not on the medicine list</span></div>
-        <form className="inventory-form" onSubmit={addItem}>
-          <input required placeholder="Item name" value={item.name} onChange={(event) => setItem({ ...item, name: event.target.value })} />
-          <select value={item.category} onChange={(event) => setItem({ ...item, category: event.target.value as ProductCategory })}>
-            <option value="cosmetic">Cosmetic</option><option value="surgical">Surgical</option><option value="baby">Baby</option><option value="general">General</option><option value="medicine">Medicine (unlisted)</option>
-          </select>
-          <input placeholder="Company (optional)" value={item.company} onChange={(event) => setItem({ ...item, company: event.target.value })} />
-          <input placeholder="Barcode (optional)" value={item.barcode} onChange={(event) => setItem({ ...item, barcode: event.target.value })} />
-          <input type="number" min="1" placeholder="Pieces per pack" value={item.unitsPerPack} onChange={(event) => setItem({ ...item, unitsPerPack: Number(event.target.value) })} />
-          <input type="number" min="0" step="0.01" placeholder="Price per pack (PKR)" value={item.retailPrice} onChange={(event) => setItem({ ...item, retailPrice: event.target.value })} />
-          <button type="submit">Add item</button>
-        </form>
-      </article>
-    </section>
+    <article className="panel">
+      <div className="panel-heading"><h2>From the medicine list</h2><span>{query.trim() ? `${masterMatches.length} not stocked here` : "Search to find more"}</span></div>
+      {masterMatches.map((match) => <div className="staff-row" key={match.id}>
+        <div><strong>{match.name}</strong><span>{[match.generic, match.company, match.strength, money(match.officialRetailPrice)].filter(Boolean).join(" · ")}</span></div>
+        <button className="secondary" onClick={() => void send("POST", { branchId, masterProductId: match.id }, `${match.name} added; receive stock to start selling it`)}>Add to shop</button>
+      </div>)}
+    </article>
   </>;
 }

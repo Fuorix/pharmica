@@ -7,10 +7,10 @@ import { corsOptions, withCors } from "../../../../../src/lib/cors";
 
 export function OPTIONS(request: Request): Response { return corsOptions(request); }
 
-/** The activated POS reads its own identity and the staff who may sign in on it with a PIN. */
+/** The linked POS counter reads its own identity and the staff who may sign in on it with a PIN. */
 export async function GET(request: Request): Promise<Response> {
   const device = await authenticateDevice(request);
-  if (!device) return withCors(apiError(401, "DEVICE_NOT_ACTIVATED", "This POS device is not activated or has been deactivated"), request);
+  if (!device) return withCors(apiError(401, "DEVICE_NOT_LINKED", "This counter is not linked or has been turned off"), request);
 
   const users = await db.user.findMany({
     where: {

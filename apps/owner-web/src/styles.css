@@ -273,3 +273,22 @@ button.link { background: none; color: inherit; padding: 0; text-decoration: und
 .auth-error { color: var(--bad); background: var(--bad-soft); padding: 10px 12px; border-radius: var(--radius-sm); font-weight: 600; }
 input[type=file] { border: 1px dashed var(--line-strong); padding: 6px; background: var(--surface-2); }
 input[type=file]::file-selector-button { font: inherit; font-weight: 600; border: 1px solid var(--line-strong); background: var(--surface); color: var(--text); padding: 6px 12px; border-radius: 6px; margin-right: 10px; cursor: pointer; }
+
+/* Shop ID: in the sidebar, and as a box on Staff & devices and Settings. */
+.shop-id { padding: 10px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--line); font-size: 13px; }
+.shop-id strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shop-id span { color: var(--muted); }
+.shop-id b { color: var(--text); letter-spacing: .06em; }
+.shop-id button.link, .shop-id button.link:hover:not(:disabled) { border: 0; background: none; color: var(--brand-dark); font-size: 12px; margin-left: 4px; }
+.shop-code-box { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 12px 14px; margin-bottom: 8px; border-radius: var(--radius-sm); background: var(--brand-soft); }
+.shop-code-box span { display: block; color: var(--brand-dark); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.shop-code-box strong { display: block; font-size: 22px; letter-spacing: .12em; }
+.shop-code-box p { flex: 1; min-width: 220px; margin: 0; color: var(--text); font-size: 13px; }
+.counter-name { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.counter-name span { display: flex; align-items: center; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface); }
+.counter-name b { padding: 0 2px 0 11px; color: var(--text); letter-spacing: .06em; }
+.inventory-form .counter-name input { border: 0; padding-left: 0; flex: 1; min-width: 0; box-shadow: none; }
+.counter-form { align-items: end; }
+.inventory-form label.field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.form-buttons { grid-column: 1 / -1; display: flex; gap: 8px; }
+.add-item-panel { margin-bottom: 18px; }

@@ -5,7 +5,7 @@ import { PosError } from "./local/engine";
 import { searchCatalogue, substitutesFor } from "./local/state";
 import type { LocalSale } from "./local/types";
 import { usePosSession, useEngineState } from "./session";
-import { CustomerDialog, DiscountDialog, HeldDialog, HelpDialog, PaymentDialog, PrescriptionDialog, SubstitutesDialog, SyncDialog } from "./ui/dialogs";
+import { CustomerDialog, DiscountDialog, HelpDialog, PaymentDialog, PrescriptionDialog, SubstitutesDialog, SyncDialog } from "./ui/dialogs";
 import { money, stockLabel, unitLabel } from "./ui/format";
 import { Printable, printNow, type PrintJob } from "./ui/Printable";
 import { SalesDialog } from "./ui/SalesDialog";
@@ -18,7 +18,7 @@ const MODES: Array<{ value: Mode; label: string; key: string }> = [{ value: "bil
 
 type DialogState =
   | null
-  | { kind: "help" | "payment" | "customer" | "held" | "sales" | "shift" | "sync" | "prescription" }
+  | { kind: "help" | "payment" | "customer" | "sales" | "shift" | "sync" | "prescription" }
   | { kind: "discount"; target: "item" | "bill" }
   | { kind: "substitutes"; product: CatalogueProduct };
 
@@ -138,15 +138,8 @@ export function App() {
     }
   }
 
-  async function holdBill() {
-    if (!items.length) return say("error", "Nothing to hold");
-    await engine.holdBill({ label: customer?.name ?? `Bill at ${new Date().toLocaleTimeString("en-PK", { timeStyle: "short" })}`, userId: user.id, items, customerId, billDiscount, paymentMethod });
-    clearBill();
-    say("ok", "Bill held. F6 to resume");
-  }
-
   function lockCounter() {
-    if (items.length) void holdBill();
+    if (items.length && !window.confirm("Lock the counter? The bill in progress will be cleared.")) return;
     lock();
   }
 
@@ -170,8 +163,6 @@ export function App() {
     if (key === "F2") return shortcut(() => searchRef.current?.focus());
     if (key === "F3") return shortcut(() => setDialog({ kind: "customer" }));
     if (key === "F4") return shortcut(cycleUnit);
-    if (key === "F5") return shortcut(() => void holdBill());
-    if (key === "F6") return shortcut(() => items.length ? say("error", "Hold or finish the current bill first") : setDialog({ kind: "held" }));
     if (key === "F7") return shortcut(() => selected ? setDialog({ kind: "discount", target: "item" }) : say("error", "Select a line first"));
     if (key === "F8") return shortcut(() => items.length ? setDialog({ kind: "discount", target: "bill" }) : say("error", "The bill is empty"));
     if (key === "F9") return shortcut(() => setPaymentMethod(PAYMENT_CYCLE[(PAYMENT_CYCLE.indexOf(paymentMethod) + 1) % PAYMENT_CYCLE.length]));
@@ -252,8 +243,6 @@ export function App() {
             <p className="hint">Type a brand, salt (e.g. paracetamol), company, or scan. <kbd>Enter</kbd> adds the highlighted item.</p>
             <div className="quick-grid">
               <button onClick={() => setDialog({ kind: "customer" })}>Customer <b>F3</b></button>
-              <button onClick={() => void holdBill()}>Hold bill <b>F5</b></button>
-              <button onClick={() => items.length ? say("error", "Hold or finish the current bill first") : setDialog({ kind: "held" })}>Held bills ({state.held.length}) <b>F6</b></button>
               <button onClick={() => setDialog({ kind: "sales" })}>Recent sales <b>Ctrl+R</b></button>
               <button onClick={() => setDialog({ kind: "shift" })}>Shift / end of day <b>F11</b></button>
               <button onClick={() => lastSale ? print({ kind: "receipt", sale: lastSale }) : say("error", "No sale to reprint yet")}>Reprint last <b>Ctrl+P</b></button>
@@ -325,11 +314,6 @@ export function App() {
           return null;
         }} />;
     })()}
-    {dialog?.kind === "held" && <HeldDialog held={state.held} names={new Map(stock.catalogue.map((product) => [product.id, product.name]))} onClose={closeDialog} onResume={async (bill) => {
-      await engine.takeHeldBill(bill.id);
-      setItems(bill.items); setCustomerId(bill.customerId); setBillDiscount(bill.billDiscount); setPaymentMethod(bill.paymentMethod); setSelectedKey(null);
-      closeDialog(); say("ok", `Resumed ${bill.label}`);
-    }} />}
     {dialog?.kind === "substitutes" && <SubstitutesDialog product={dialog.product} substitutes={substitutesFor(dialog.product, stock.catalogue)} onClose={closeDialog} onPick={(product) => { setDialog(null); addProduct(product); }} />}
     {dialog?.kind === "sales" && <SalesDialog sales={state.sales} currentShiftId={state.shift?.id} onClose={closeDialog}
       onReprint={(sale) => print({ kind: "receipt", sale })}
@@ -348,7 +332,7 @@ export function App() {
     {dialog?.kind === "shift" && state.shift && <ShiftDialog shift={state.shift} report={engine.shiftReport()!} onReport={(counted) => engine.shiftReport(counted)} onClose={closeDialog}
       onPrintInterim={() => print({ kind: "shift", shift: state.shift!, report: engine.shiftReport()! })}
       onCloseShift={async (counted) => {
-        if (items.length) throw new PosError("Finish or hold the current bill before closing the shift");
+        if (items.length) throw new PosError("Finish or clear the current bill before closing the shift");
         const closed = await engine.closeShift(user, counted);
         setDialog(null);
         print({ kind: "shift", shift: closed, report: closed.report! });

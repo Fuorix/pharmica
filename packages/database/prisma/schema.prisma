@@ -10,6 +10,8 @@ generator client {
 model Organisation {
   id           String                @id @default(cuid())
   name         String
+  /// Permanent public ID of the pharmacy: 6 letters and digits without look-alikes. Counters are named `<shopCode>-<number>`.
+  shopCode     String                @unique
   /// A suspended tenant cannot sign in or sync. Set by Pharmica staff only; not used for unpaid subscriptions.
   isActive     Boolean               @default(true)
   contactName  String?
@@ -41,7 +43,6 @@ model Branch {
   products              Product[]
   sales                 Sale[]
   shifts                Shift[]
-  heldBills             HeldBill[]
   suppliers             Supplier[]
   purchases             Purchase[]
   stockMovements        StockMovement[]
@@ -73,7 +74,6 @@ model User {
   auditLogs             AuditLog[]
   sales                 Sale[]
   shifts                Shift[]
-  heldBills             HeldBill[]
   purchases             Purchase[]
   stockMovements        StockMovement[]
   customerLedger        CustomerLedgerEntry[]
@@ -92,8 +92,10 @@ enum UserRole {
 model Device {
   id             String          @id @default(cuid())
   branchId       String
-  name           String
-  activationCode String          @unique
+  /// `<shopCode>-<counterNumber>`, e.g. `K7P2QX-1`. Typed once with a staff PIN to link a computer to this counter.
+  name           String          @unique
+  counterNumber  Int
+  /// Set while a computer is linked; cleared when the owner resets the counter.
   secretHash     String?
   activatedAt    DateTime?
   isActive       Boolean         @default(true)
@@ -585,20 +587,6 @@ model Shift {
 enum ShiftStatus {
   OPEN
   CLOSED
-}
-
-model HeldBill {
-  id        String   @id @default(cuid())
-  branchId  String
-  userId    String
-  label     String?
-  payload   Json
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  branch    Branch   @relation(fields: [branchId], references: [id])
-  user      User     @relation(fields: [userId], references: [id])
-
-  @@index([branchId, updatedAt])
 }
 
 enum PaymentMethod {

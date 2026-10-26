@@ -10,7 +10,8 @@ const { PrismaClient } = require("@prisma/client");
 const db = new PrismaClient();
 const ORG = "e2e-pos-org";
 const BRANCH = "e2e-pos-branch";
-export const ACTIVATION_CODE = "E2EPOSCODE01";
+/** The test pharmacy's shop code; its counters are E2ETST-1, -2 and -3. */
+const SHOP_CODE = "E2ETST";
 const hash = (secret) => { const salt = randomBytes(16); return `scrypt$${salt.toString("hex")}$${scryptSync(secret, salt, 64).toString("hex")}`; };
 
 /** Tenants created through the admin panel by the onboarding test. */
@@ -75,15 +76,13 @@ async function removeTenant(organisationId) {
 async function setup() {
   await cleanup();
   await db.user.create({ data: { name: "E2E Admin", login: E2E_ADMIN, credentialHash: hash("e2e-admin-password"), role: "SUPER_ADMIN" } });
-  await db.organisation.create({ data: { id: ORG, name: "E2E Pharmacy" } });
+  await db.organisation.create({ data: { id: ORG, name: "E2E Pharmacy", shopCode: SHOP_CODE } });
   // Paid a year ahead, so nothing is paused during the scenarios.
   await db.subscription.create({ data: { organisationId: ORG, planId: "plan_pro", status: "ACTIVE", isTrial: false, paidThrough: new Date(Date.now() + 365 * 86_400_000) } });
   await db.branch.create({ data: { id: BRANCH, organisationId: ORG, name: "E2E Branch" } });
   await db.user.create({ data: { organisationId: ORG, name: "E2E Owner", login: "e2e-pos-owner@test.local", credentialHash: hash("e2e-password-123"), pinHash: hash("1111"), role: "OWNER" } });
   await db.user.create({ data: { organisationId: ORG, branchId: BRANCH, name: "E2E Cashier", login: "e2e-pos-cashier", pinHash: hash("1234"), role: "CASHIER", maxDiscountPercent: 5 } });
-  await db.device.create({ data: { branchId: BRANCH, name: "E2E Counter", activationCode: ACTIVATION_CODE } });
-  await db.device.create({ data: { branchId: BRANCH, name: "E2E Counter 2", activationCode: "E2EPOSCODE02" } });
-  await db.device.create({ data: { branchId: BRANCH, name: "E2E Counter 3", activationCode: "E2EPOSCODE03" } });
+  for (const counterNumber of [1, 2, 3]) await db.device.create({ data: { branchId: BRANCH, name: `${SHOP_CODE}-${counterNumber}`, counterNumber } });
   // A master-list medicine this branch does not stock yet, for the receiving test.
   const brufen = await db.masterProduct.findFirstOrThrow({ where: { name: "Brufen 400mg" } });
   writeFileSync(new URL("./.tenant.json", import.meta.url), JSON.stringify({ receive: { barcode: brufen.barcode, unitsPerPack: brufen.unitsPerPack, tabletsPerStrip: brufen.tabletsPerStrip, officialRetailPrice: Number(brufen.officialRetailPrice) } }));

@@ -39,7 +39,7 @@ This puts Pharmica online for testers at no cost: the database on **Neon**, the 
 | `SEED_CASHIER_PIN` | pharmica-api | 4–6 digits, the demo cashier's POS PIN |
 | `VITE_API_URL` | pharmica-owner, pharmica-admin, pharmica-pos | `https://pharmica-api.onrender.com` |
 
-4. Press **Apply** (or **Deploy Blueprint**). Render creates and builds all four. The API takes the longest (about 5–10 minutes); its build log ends with `Seeded owner@demo.local, cashier@demo.local, admin@pharmica.local, and POS activation code DEMO-POS-001.`
+4. Press **Apply** (or **Deploy Blueprint**). Render creates and builds all four. The API takes the longest (about 5–10 minutes); its build log ends with `Seeded owner@demo.local, cashier@demo.local, admin@pharmica.local, and the counter PHRM24-1 (link it on the POS with a staff PIN).`
 
 ### 4. Check the addresses Render gave
 Open each service in the dashboard; its address is under the name. Render uses `https://<name>.onrender.com` when that name is free, and adds a few random characters when it is not (such as `https://pharmica-api-x3k9.onrender.com`).
@@ -52,13 +52,13 @@ If any address differs from the values entered in step 3:
 1. Open `https://pharmica-api.onrender.com/api/v1/health` (your real API address). It shows `{"status":"ok","service":"pharmica-api",...}`. The first time after a sleep this takes up to a minute.
 2. Admin panel address: sign in as `admin@pharmica.local` with `SEED_ADMIN_CREDENTIAL`.
 3. Owner panel address: sign in as `owner@demo.local` with `SEED_OWNER_CREDENTIAL`.
-4. POS address: activate with `DEMO-POS-001` (it works once; the owner can reset it under Staff & devices for a new code), then pick a name and enter the PIN.
+4. POS address: enter the counter name `PHRM24-1` and a demo PIN (`SEED_OWNER_PIN` or `SEED_CASHIER_PIN`). A counter is linked to one computer at a time, so give each tester their own: in the owner panel, Staff & devices → Add counter (`PHRM24-2`, and so on). To move a counter to another computer, use **Unlink** there first.
 
 ### 6. Hand over to the tester
 Send the three addresses (admin, owner, POS) and the passwords, with these notes:
 - Use **Chrome or Edge** on a computer. Safari and Firefox block the sign-in cookie between `onrender.com` addresses.
 - If a panel says it **cannot reach Pharmica**, the API is waking up: wait a minute and try again.
-- To test a new pharmacy end to end: admin panel → Pharmacies → New pharmacy (the temporary password is shown once) → owner panel sign-in → Staff & devices for PINs and activation codes → POS.
+- To test a new pharmacy end to end: admin panel → Pharmacies → New pharmacy (the temporary password is shown once) → owner panel sign-in → Staff & devices for PINs and counters → POS.
 - Offline billing: once the POS has loaded its catalogue, switch the internet off and keep billing; it uploads when the internet is back. Do not reload the POS page while offline, because the browser needs the internet to load the page itself.
 
 ## Updating
