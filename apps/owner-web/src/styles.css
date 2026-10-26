@@ -289,3 +289,6 @@ input[type=file]::file-selector-button { font: inherit; font-weight: 600; border
 .counter-name b { padding: 0 2px 0 11px; color: var(--text); letter-spacing: .06em; }
 .inventory-form .counter-name input { border: 0; padding-left: 0; flex: 1; min-width: 0; box-shadow: none; }
 .counter-form { align-items: end; }
+.inventory-form label.field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.form-buttons { grid-column: 1 / -1; display: flex; gap: 8px; }
+.add-item-panel { margin-bottom: 18px; }

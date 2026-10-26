@@ -57,7 +57,7 @@ export function PaymentDialog({ totals, method, onMethod, customer, exchangeCred
       {method === "cash" && due > 0 && <label>Cash received<input ref={cashRef} autoFocus inputMode="decimal" value={cash} onChange={(event) => setCash(event.target.value.replace(/[^\d.]/g, ""))} /></label>}
       {method === "cash" && due > 0 && <div className="payment-change"><span>Change</span><strong>{Number.isFinite(received) && received >= due ? money(received - due) : "—"}</strong></div>}
       {method === "credit" && <p className={customer ? "muted" : "warning-text"}>{customer ? `${customer.name} owes ${money(customer.balance)} now · ${customer.creditLimit === null ? "no credit limit" : customer.creditLimit === 0 ? "no credit allowed" : `limit ${money(customer.creditLimit)}`}` : "Choose a customer first (F3)"}</p>}
-      <button className="primary" autoFocus={method !== "cash"} disabled={busy || (method === "cash" && due > 0 && !(received >= due)) || (method === "credit" && !customer)}>{busy ? "Saving..." : "Complete sale"} <b>Enter</b></button>
+      <button className="primary wide" autoFocus={method !== "cash"} disabled={busy || (method === "cash" && due > 0 && !(received >= due)) || (method === "credit" && !customer)}>{busy ? "Saving..." : "Complete sale"} <b>Enter</b></button>
     </form>
   </Dialog>;
 }

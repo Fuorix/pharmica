@@ -90,8 +90,11 @@ test("a counter bills, voids, and returns with the internet down, survives a res
   await expect(notice(page)).toContainText("Refund PKR 250.00 by cash");
   await expect(page.locator(".sync-pill")).toContainText("to upload");
 
-  // Restart the app while still offline: nothing is lost and the cashier can sign in offline.
+  // Restart the app while still offline: nothing is lost and the cashier is still signed in.
+  // Locking and signing back in also works offline, with the PIN this counter remembered.
   await page.reload();
+  await expect(page.getByLabel("Search")).toBeFocused();
+  await page.keyboard.press("F12");
   await signInCashier(page);
   await expect(page.getByLabel("Search")).toBeFocused();
   await expect(page.locator(".sync-pill")).toContainText("Offline · 4 to upload");

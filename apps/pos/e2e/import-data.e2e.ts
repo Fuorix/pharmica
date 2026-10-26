@@ -9,7 +9,7 @@ const BRANCH = "e2e-pos-branch";
 test("owner imports opening stock, settling an unclear match by hand", async ({ page, request }) => {
   await page.goto(OWNER_WEB);
   await page.getByLabel("Login").fill("e2e-pos-owner@test.local");
-  await page.getByLabel("Password").fill("e2e-password-123");
+  await page.getByRole("textbox", { name: /^Password/ }).fill("e2e-password-123");
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.getByRole("button", { name: "Import data", exact: true }).click();
 

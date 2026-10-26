@@ -254,3 +254,6 @@ input::placeholder { color: #8a9a96; }
   .stock-layout { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { button { transition: none; } }
+
+/* Form buttons keep their natural width; only "Complete sale" (wide) and the checkout bar span the panel. */
+.adjust-form > button, .stack > button:not(.wide) { align-self: flex-start; }
