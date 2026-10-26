@@ -11,7 +11,7 @@ describe("apiError", () => {
 });
 
 describe("withCors", () => {
-  it("allows the POS to send idempotency keys and delete held bills", () => {
+  it("allows the apps to send idempotency keys and DELETE requests", () => {
     const request = new Request("http://localhost:4000/api/v1/sales", { headers: { origin: "http://localhost:3002" } });
     const response = withCors(new Response(null), request);
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:3002");

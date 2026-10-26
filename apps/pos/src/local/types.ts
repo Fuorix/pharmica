@@ -1,5 +1,5 @@
 import type { CatalogueProduct, PaymentMethod, PosBatch, PosCustomer, PosOperation, PosSnapshot, PosSyncResult, Prescription, SaleUnit } from "@pharmica/contracts";
-import type { CartItem, PurchaseTotals, ShiftReport } from "@pharmica/domain";
+import type { PurchaseTotals, ShiftReport } from "@pharmica/domain";
 
 /** A change this counter made that the server has not confirmed yet. */
 export interface QueuedOperation {
@@ -113,16 +113,6 @@ export interface LocalShift {
   report?: ShiftReport;
 }
 
-export interface HeldBill {
-  id: string;
-  label: string;
-  createdAt: string;
-  userId: string;
-  items: CartItem[];
-  customerId?: string;
-  billDiscount: number;
-  paymentMethod: PaymentMethod;
-}
 
 export interface PosSettings {
   paperWidth: 58 | 80;

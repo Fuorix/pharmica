@@ -4,7 +4,7 @@ import { billTotals, computeShiftReport, discountWithinLimit, withinCreditLimit,
 import type { Entry, LocalDb } from "./db";
 import { nextSyncDelay } from "./schedule";
 import { searchMasterList, workingStock, type WorkingStock } from "./state";
-import type { HeldBill, LocalPayment, LocalPurchase, LocalReturn, LocalSale, LocalShift, PosSettings, QueuedOperation, SyncStatus } from "./types";
+import type { LocalPayment, LocalPurchase, LocalReturn, LocalSale, LocalShift, PosSettings, QueuedOperation, SyncStatus } from "./types";
 
 export interface ReceiveInput {
   supplierId?: string;
@@ -52,7 +52,6 @@ export interface EngineState {
   stock: WorkingStock | null;
   outbox: QueuedOperation[];
   sales: LocalSale[];
-  held: HeldBill[];
   purchases: LocalPurchase[];
   payments: LocalPayment[];
   shift: LocalShift | null;
@@ -89,7 +88,7 @@ export class PosEngine {
 
   static async open(db: LocalDb, transport: Transport, deviceId: string): Promise<PosEngine> {
     const engine = new PosEngine(db, transport, deviceId, {
-      snapshot: null, stock: null, outbox: [], sales: [], held: [], purchases: [], payments: [], shift: null, settings: { paperWidth: 80 }, deviceRevoked: false,
+      snapshot: null, stock: null, outbox: [], sales: [], purchases: [], payments: [], shift: null, settings: { paperWidth: 80 }, deviceRevoked: false,
       sync: { online: typeof navigator === "undefined" ? true : navigator.onLine, syncing: false, pending: 0, failed: 0, lastSyncAt: null, lastSnapshotAt: null, error: null, consecutiveFailures: 0, nextAttemptAt: null, masterProducts: 0, paused: null }
     });
     await engine.reload();
@@ -111,11 +110,10 @@ export class PosEngine {
   }
 
   private async reload() {
-    const [snapshot, outbox, sales, held, shift, settings, localCustomers, lastSyncAt, purchases, payments, masterCount] = await Promise.all([
+    const [snapshot, outbox, sales, shift, settings, localCustomers, lastSyncAt, purchases, payments, masterCount] = await Promise.all([
       this.db.get<PosSnapshot>("meta", "snapshot"),
       this.db.all<QueuedOperation>("outbox"),
       this.db.all<LocalSale>("sales"),
-      this.db.all<HeldBill>("held"),
       this.db.get<LocalShift>("meta", "shift"),
       this.db.get<PosSettings>("meta", "settings"),
       this.db.all<PosCustomer>("customers"),
@@ -130,7 +128,6 @@ export class PosEngine {
       stock: snapshot ? workingStock(snapshot, outbox, localCustomers) : null,
       outbox,
       sales: sales.slice(0, RECENT_SALES),
-      held: held.sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
       purchases: purchases.reverse().slice(0, 100),
       payments: payments.reverse().slice(0, 500),
       shift,
@@ -501,7 +498,7 @@ export class PosEngine {
     return closed;
   }
 
-  // ----- customers, held bills, audit -----
+  // ----- customers, audit -----
 
   /** `creditLimit`: 0 or missing allows no credit; null means no limit. */
   async createCustomer(user: PosStaffMember, input: { name: string; phone?: string; creditLimit?: number | null }): Promise<PosCustomer> {
@@ -511,19 +508,6 @@ export class PosEngine {
     const customer: PosCustomer = { id: newId(), name: input.name.trim(), phone: phone ?? null, creditLimit: input.creditLimit === null ? null : roundMoney(input.creditLimit ?? 0), balance: 0, daysOutstanding: 0 };
     await this.commit([{ collection: "customers", id: customer.id, value: customer }], [{ operation: this.operation("customer.create", user, { customerId: customer.id, name: customer.name, phone, creditLimit: customer.creditLimit }), stockEffects: [], balanceEffects: [] }]);
     return customer;
-  }
-
-  async holdBill(bill: Omit<HeldBill, "id" | "createdAt">): Promise<void> {
-    const id = `${Date.now()}-${newId()}`;
-    await this.db.write([{ collection: "held", id, value: { ...bill, id, createdAt: nowIso() } }]);
-    await this.reload();
-  }
-
-  async takeHeldBill(id: string): Promise<HeldBill | null> {
-    const bill = await this.db.get<HeldBill>("held", id);
-    if (bill) await this.db.write([{ collection: "held", id, value: undefined }]);
-    await this.reload();
-    return bill;
   }
 
   /** Records a counter event the owner should see, such as a deleted line or opening the cash drawer. */

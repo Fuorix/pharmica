@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { CatalogueProduct, PaymentMethod, PosCustomer, Prescription } from "@pharmica/contracts";
 import type { BillTotals } from "@pharmica/domain";
-import type { HeldBill, QueuedOperation, SyncStatus } from "../local/types";
+import type { QueuedOperation, SyncStatus } from "../local/types";
 import { Dialog } from "./Dialog";
 import { dateTime, money, parseDiscount, stockLabel } from "./format";
 
@@ -158,17 +158,6 @@ export function CustomerDialog({ customers, selectedId, onClose, onSelect, onCre
   </Dialog>;
 }
 
-export function HeldDialog({ held, names, onClose, onResume }: { held: HeldBill[]; names: Map<string, string>; onClose: () => void; onResume: (bill: HeldBill) => void }) {
-  const list = useListKeys(held.length, (index) => onResume(held[index]));
-  return <Dialog title="Held bills" onClose={onClose}>
-    <div className="pick-list" tabIndex={0} autoFocus onKeyDown={list.onKeyDown} ref={(element) => element?.focus()}>
-      {held.map((bill, index) => <button key={bill.id} className={index === list.index ? "highlight" : ""} onClick={() => onResume(bill)}>
-        <strong>{bill.label}</strong><span>{bill.items.map((item) => names.get(item.productId) ?? "Item").join(", ")}</span><span>{dateTime(bill.createdAt)}</span>
-      </button>)}
-    </div>
-    {!held.length && <p className="muted">No held bills.</p>}
-  </Dialog>;
-}
 
 export function SubstitutesDialog({ product, substitutes, onClose, onPick }: { product: CatalogueProduct; substitutes: CatalogueProduct[]; onClose: () => void; onPick: (product: CatalogueProduct) => void }) {
   const list = useListKeys(substitutes.length, (index) => onPick(substitutes[index]));
@@ -210,7 +199,7 @@ export const SHORTCUTS: Array<[string, string]> = [
   ["F2", "Search medicine / scan barcode"], ["↑ ↓ Enter", "Pick a search result"], ["Alt+↑ / Alt+↓", "Select a bill line"],
   ["+ / −", "Change quantity of the selected line"], ["F4", "Switch pack / strip / tablet"], ["Del", "Remove the selected line"],
   ["F3", "Customer (for credit / udhaar)"], ["F7", "Discount on the selected line"], ["F8", "Discount on the whole bill"],
-  ["F9", "Cycle payment: cash, card, credit"], ["F10", "Take payment"], ["F5 / F6", "Hold bill / resume held bill"],
+  ["F9", "Cycle payment: cash, card, credit"], ["F10", "Take payment"],
   ["Ctrl+R", "Recent sales: reprint, void, return, exchange"], ["Ctrl+P", "Reprint last receipt"], ["Ctrl+D", "Open cash drawer (recorded)"],
   ["F11", "Shift: end-of-day report, close, and lock"], ["F12", "Lock the counter"], ["F1", "This help"]
 ];

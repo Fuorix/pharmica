@@ -86,14 +86,14 @@ describe("role and tenant boundaries", () => {
     expect(response.status).toBe(403);
   });
 
-  const branchReads = ["/api/v1/catalogue", "/api/v1/inventory", "/api/v1/sales", "/api/v1/shifts", "/api/v1/held-bills", "/api/v1/customers", "/api/v1/suppliers", "/api/v1/price-reports", "/api/v1/controlled-drugs"];
+  const branchReads = ["/api/v1/catalogue", "/api/v1/inventory", "/api/v1/sales", "/api/v1/shifts", "/api/v1/customers", "/api/v1/suppliers", "/api/v1/price-reports", "/api/v1/controlled-drugs"];
 
   it.each(branchReads)("forbids another tenant's owner from reading branch data: %s", async (path) => {
     const response = await call((await route(path)).GET, { path: `${path}?branchId=${t.branchA1.id}`, token: ownerB });
     expect(response.status).toBe(403);
   });
 
-  it.each(["/api/v1/catalogue", "/api/v1/inventory", "/api/v1/sales", "/api/v1/shifts", "/api/v1/held-bills", "/api/v1/customers"])(
+  it.each(["/api/v1/catalogue", "/api/v1/inventory", "/api/v1/sales", "/api/v1/shifts", "/api/v1/customers"])(
     "forbids a cashier from reading another branch of their own organisation: %s",
     async (path) => {
       const response = await call((await route(path)).GET, { path: `${path}?branchId=${t.branchA2.id}`, token: cashierA1Device });
