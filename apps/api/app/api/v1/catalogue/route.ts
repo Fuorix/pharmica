@@ -2,6 +2,7 @@ import type { CatalogueSearchResponse } from "@pharmica/contracts";
 import { db, type Prisma } from "@pharmica/database/client";
 import { z } from "zod";
 import { recordAudit, requireAuth, requireBranch } from "../../../../src/auth/authorization";
+import { changePacking } from "../../../../src/catalogue/packing";
 import { catalogueInclude, masterSearchWhere, productSearchWhere, rankMatches, toCatalogueProduct, toMasterSummary } from "../../../../src/catalogue/catalogue";
 import { apiError } from "../../../../src/lib/api-response";
 import { corsOptions, withCors } from "../../../../src/lib/cors";
@@ -36,7 +37,9 @@ const updateProductSchema = z.object({
   rackLocation: z.string().trim().max(40).nullable().optional(),
   retailPriceOverride: money.nullable().optional(),
   lowStockThreshold: z.number().int().nonnegative().optional(),
-  isActive: z.boolean().optional()
+  isActive: z.boolean().optional(),
+  /** Corrects how a pack is made up; stock keeps its number of packs. */
+  packing: z.object({ stripsPerPack: z.number().int().min(1).max(1000), tabletsPerStrip: z.number().int().min(1).max(1000) }).optional()
 });
 
 export function OPTIONS(request: Request): Response {
@@ -115,7 +118,7 @@ export async function POST(request: Request): Promise<Response> {
   return withCors(Response.json({ product: toCatalogueProduct(product) }, { status: 201, headers: { "x-api-version": "v1" } }), request);
 }
 
-/** Branch-level settings: rack location, shop price override, low-stock threshold, active flag. */
+/** Branch-level settings: rack location, shop price override, low-stock threshold, active flag, and packing. */
 export async function PATCH(request: Request): Promise<Response> {
   const access = await requireAuth(request, ["owner", "super-admin"]);
   if ("response" in access) return withCors(access.response, request);
@@ -123,21 +126,28 @@ export async function PATCH(request: Request): Promise<Response> {
   if ("response" in parsed) return withCors(parsed.response, request);
   const body = parsed.data;
 
-  const existing = await db.product.findUnique({ where: { id: body.productId } });
+  const existing = await db.product.findUnique({ where: { id: body.productId }, include: { masterProduct: true } });
   if (!existing) return withCors(apiError(404, "PRODUCT_NOT_FOUND", "Product was not found"), request);
   const scope = await requireBranch(access.user, existing.branchId);
   if ("response" in scope) return withCors(scope.response, request);
 
-  const product = await db.product.update({
-    where: { id: existing.id },
-    data: {
-      ...(body.rackLocation !== undefined ? { rackLocation: body.rackLocation || null } : {}),
-      ...(body.retailPriceOverride !== undefined ? { retailPriceOverride: body.retailPriceOverride } : {}),
-      ...(body.lowStockThreshold !== undefined ? { lowStockThreshold: body.lowStockThreshold } : {}),
-      ...(body.isActive !== undefined ? { isActive: body.isActive } : {})
-    },
-    include: catalogueInclude
+  const { product, packing } = await db.$transaction(async (tx) => {
+    const packing = body.packing ? await changePacking(tx, existing, body.packing, access.user.id) : null;
+    const product = await tx.product.update({
+      where: { id: existing.id },
+      data: {
+        ...(body.rackLocation !== undefined ? { rackLocation: body.rackLocation || null } : {}),
+        ...(body.retailPriceOverride !== undefined ? { retailPriceOverride: body.retailPriceOverride } : {}),
+        ...(body.lowStockThreshold !== undefined ? { lowStockThreshold: body.lowStockThreshold } : {}),
+        ...(body.isActive !== undefined ? { isActive: body.isActive } : {})
+      },
+      include: catalogueInclude
+    });
+    return { product, packing };
   });
+  if (packing?.changed) {
+    await recordAudit({ organisationId: scope.branch.organisationId, branchId: existing.branchId, userId: access.user.id, action: "catalogue.packing_changed", entityType: "product", entityId: existing.id, metadata: { from: packing.from, to: body.packing } });
+  }
   if (body.retailPriceOverride !== undefined) {
     await recordAudit({ organisationId: scope.branch.organisationId, branchId: existing.branchId, userId: access.user.id, action: "catalogue.price_override_changed", entityType: "product", entityId: existing.id, metadata: { from: existing.retailPriceOverride == null ? null : Number(existing.retailPriceOverride), to: body.retailPriceOverride } });
   }

@@ -200,6 +200,25 @@ describe("branch catalogue management", () => {
     expect(await db.auditLog.count({ where: { action: "catalogue.price_override_changed" } })).toBe(1);
   });
 
+  it("corrects a medicine's packing for the branch, keeping the number of packs on the shelf", async () => {
+    // Panadol on the medicine list is 10 x 10, and the branch holds 1000 tablets: 10 packs.
+    const response = await call(catalogue.PATCH, { method: "PATCH", token: owner, body: { productId: t.productA1.id, packing: { stripsPerPack: 2, tabletsPerStrip: 10 } } });
+    expect(response.status).toBe(200);
+    expect(response.body.product).toMatchObject({ unitsPerPack: 2, tabletsPerStrip: 10, stockQuantity: 200, sellableUnits: ["pack", "strip", "tablet"] });
+    const movement = await db.stockMovement.findFirstOrThrow({ where: { productId: t.productA1.id, type: "ADJUSTMENT" } });
+    expect(movement).toMatchObject({ quantity: -800, reason: "Packing corrected from 10 x 10 to 2 x 10", userId: t.ownerA.id });
+    expect(await db.auditLog.count({ where: { action: "catalogue.packing_changed" } })).toBe(1);
+    // The medicine list itself is unchanged, and saving the same packing again changes nothing.
+    expect(await db.masterProduct.findFirstOrThrow({ where: { name: "Panadol 500mg" } })).toMatchObject({ unitsPerPack: 10, tabletsPerStrip: 10 });
+    await call(catalogue.PATCH, { method: "PATCH", token: owner, body: { productId: t.productA1.id, packing: { stripsPerPack: 2, tabletsPerStrip: 10 } } });
+    expect(await db.stockMovement.count({ where: { productId: t.productA1.id, type: "ADJUSTMENT" } })).toBe(1);
+  });
+
+  it("refuses packing below one and leaves packing changes to owners", async () => {
+    expect((await call(catalogue.PATCH, { method: "PATCH", token: owner, body: { productId: t.productA1.id, packing: { stripsPerPack: 0, tabletsPerStrip: 10 } } })).status).toBe(400);
+    expect((await call(catalogue.PATCH, { method: "PATCH", token: cashier, body: { productId: t.productA1.id, packing: { stripsPerPack: 2, tabletsPerStrip: 10 } } })).status).toBe(403);
+  });
+
   it("forbids changing another tenant's products", async () => {
     const ownerB = await webSession(t.ownerB.id);
     expect((await call(catalogue.PATCH, { method: "PATCH", token: ownerB, body: { productId: t.productA1.id, rackLocation: "X" } })).status).toBe(403);

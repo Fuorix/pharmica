@@ -14,11 +14,26 @@ type PackSource = {
   masterProduct?: { unitsPerPack: number; tabletsPerStrip: number } | null;
 };
 
+/** The branch's own packing when it has one (a shop item, or a correction by the owner), otherwise the medicine list's. */
 export function packStructure(product: PackSource): PackStructure {
   return {
-    stripsPerPack: product.masterProduct?.unitsPerPack ?? product.unitsPerPack ?? 1,
-    tabletsPerStrip: product.masterProduct?.tabletsPerStrip ?? product.tabletsPerStrip ?? 1
+    stripsPerPack: product.unitsPerPack ?? product.masterProduct?.unitsPerPack ?? 1,
+    tabletsPerStrip: product.tabletsPerStrip ?? product.masterProduct?.tabletsPerStrip ?? 1
   };
+}
+
+const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+
+/**
+ * How one pack is made up, for checking against the box: "1 pack = 3 strips × 10 tablets (30)". Items other than
+ * medicines come in pieces rather than strips of tablets.
+ */
+export function packingLabel(structure: PackStructure, isMedicine = true): string {
+  const { stripsPerPack: strips, tabletsPerStrip: tablets } = structure;
+  if (strips * tablets <= 1) return "Sold as a whole pack";
+  if (!isMedicine) return `1 pack = ${plural(strips * tablets, "piece")}`;
+  if (tablets === 1) return `1 pack = ${plural(strips, "unit")}`;
+  return `1 pack = ${plural(strips, "strip")} × ${plural(tablets, "tablet")}${strips > 1 ? ` (${strips * tablets})` : ""}`;
 }
 
 /** Base units contained in one selling unit. */

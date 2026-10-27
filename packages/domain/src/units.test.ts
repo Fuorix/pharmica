@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { packStructure, sellableUnits, sellingPackPrice, unitCost, unitPrice, unitSize } from "./units";
+import { packingLabel, packStructure, sellableUnits, sellingPackPrice, unitCost, unitPrice, unitSize } from "./units";
 
 const tablets = { stripsPerPack: 2, tabletsPerStrip: 10 };
 const syrup = { stripsPerPack: 1, tabletsPerStrip: 1 };
 
 describe("pack structure", () => {
-  it("prefers the master product's structure over the shop item's", () => {
-    expect(packStructure({ unitsPerPack: 5, tabletsPerStrip: 5, masterProduct: { unitsPerPack: 2, tabletsPerStrip: 10 } })).toEqual(tablets);
+  it("uses the branch's own packing over the medicine list's, so the owner can correct it", () => {
+    expect(packStructure({ unitsPerPack: 3, tabletsPerStrip: 10, masterProduct: { unitsPerPack: 2, tabletsPerStrip: 10 } })).toEqual({ stripsPerPack: 3, tabletsPerStrip: 10 });
+    expect(packStructure({ unitsPerPack: null, tabletsPerStrip: null, masterProduct: { unitsPerPack: 2, tabletsPerStrip: 10 } })).toEqual(tablets);
     expect(packStructure({ unitsPerPack: 3, tabletsPerStrip: null })).toEqual({ stripsPerPack: 3, tabletsPerStrip: 1 });
     expect(packStructure({})).toEqual(syrup);
   });
@@ -15,6 +16,14 @@ describe("pack structure", () => {
     expect(unitSize("pack", tablets)).toBe(20);
     expect(unitSize("strip", tablets)).toBe(10);
     expect(unitSize("tablet", tablets)).toBe(1);
+  });
+
+  it("describes a pack for checking against the box", () => {
+    expect(packingLabel(tablets)).toBe("1 pack = 2 strips × 10 tablets (20)");
+    expect(packingLabel({ stripsPerPack: 1, tabletsPerStrip: 14 })).toBe("1 pack = 1 strip × 14 tablets");
+    expect(packingLabel({ stripsPerPack: 5, tabletsPerStrip: 1 })).toBe("1 pack = 5 units");
+    expect(packingLabel(syrup)).toBe("Sold as a whole pack");
+    expect(packingLabel({ stripsPerPack: 12, tabletsPerStrip: 1 }, false)).toBe("1 pack = 12 pieces");
   });
 
   it("only offers units the product can be split into", () => {

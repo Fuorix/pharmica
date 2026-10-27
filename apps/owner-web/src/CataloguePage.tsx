@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { packingLabel } from "@pharmica/domain";
 import type { CatalogueProduct, CatalogueSearchResponse, MasterPriceEntry, MasterProductSummary, ProductCategory } from "@pharmica/contracts";
 import { PriceUpdatesPanel } from "./PriceUpdatesPanel";
 import { apiFetch, errorMessage, jsonBody } from "./session";
@@ -16,6 +17,7 @@ export function CataloguePage({ branchId }: { branchId: string }) {
   const [item, setItem] = useState(emptyItem);
   const [adding, setAdding] = useState(false);
   const [history, setHistory] = useState<{ product: CatalogueProduct; prices: PriceHistory } | null>(null);
+  const [packing, setPacking] = useState<{ product: CatalogueProduct; strips: string; tablets: string } | null>(null);
 
   const load = useCallback(async () => {
     const response = await apiFetch(`/api/v1/catalogue?branchId=${branchId}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`);
@@ -44,6 +46,15 @@ export function CataloguePage({ branchId }: { branchId: string }) {
     const value = field === "rackLocation" ? input.trim() || null : input.trim() === "" ? null : Number(input);
     if (typeof value === "number" && !Number.isFinite(value)) return setMessage(`${label} must be a number`);
     void send("PATCH", { productId: product.id, [field]: field === "lowStockThreshold" ? value ?? 0 : value }, `${product.name} updated`);
+  }
+
+  async function savePacking(event: FormEvent) {
+    event.preventDefault();
+    if (!packing) return;
+    const medicine = packing.product.category === "medicine";
+    const next = { stripsPerPack: Number(packing.strips) || 1, tabletsPerStrip: medicine ? Number(packing.tablets) || 1 : 1 };
+    const ok = await send("PATCH", { productId: packing.product.id, packing: next }, `${packing.product.name}: ${packingLabel(next, medicine).toLowerCase()}`);
+    if (ok) setPacking(null);
   }
 
   async function showHistory(product: CatalogueProduct) {
@@ -91,6 +102,22 @@ export function CataloguePage({ branchId }: { branchId: string }) {
         <div className="form-buttons"><button type="submit">Save item</button><button type="button" className="secondary" onClick={() => { setAdding(false); setItem(emptyItem); }}>Cancel</button></div>
       </form>
     </article>}
+    {packing && (() => {
+      const medicine = packing.product.category === "medicine";
+      const next = { stripsPerPack: Number(packing.strips) || 1, tabletsPerStrip: medicine ? Number(packing.tablets) || 1 : 1 };
+      const packs = packing.product.stockQuantity / (packing.product.unitsPerPack * packing.product.tabletsPerStrip);
+      return <article className="panel add-item-panel">
+        <div className="panel-heading"><h2>Packing · {packing.product.name}</h2><span>Now: {packingLabel({ stripsPerPack: packing.product.unitsPerPack, tabletsPerStrip: packing.product.tabletsPerStrip }, medicine)}</span></div>
+        <form className="inventory-form" onSubmit={(event) => void savePacking(event)}>
+          {medicine ? <>
+            <label className="field">Strips per pack<input type="number" min="1" max="1000" required autoFocus value={packing.strips} onChange={(event) => setPacking({ ...packing, strips: event.target.value })} /></label>
+            <label className="field">Tablets per strip<input type="number" min="1" max="1000" required value={packing.tablets} onChange={(event) => setPacking({ ...packing, tablets: event.target.value })} /></label>
+          </> : <label className="field">Pieces per pack<input type="number" min="1" max="1000" required autoFocus value={packing.strips} onChange={(event) => setPacking({ ...packing, strips: event.target.value })} /></label>}
+          <p className="field-note">New: {packingLabel(next, medicine)}. {packs > 0 ? `The ${Number.isInteger(packs) ? packs : packs.toFixed(1)} packs in stock stay ${Number.isInteger(packs) ? packs : packs.toFixed(1)} packs; loose tablets are rounded. Count the stock afterwards if some packs were opened.` : "Nothing is in stock, so only future stock is affected."} {packing.product.masterProductId ? "This changes the packing for this branch only, not the medicine list." : ""}</p>
+          <div className="form-buttons"><button type="submit">Save packing</button><button type="button" className="secondary" onClick={() => setPacking(null)}>Cancel</button></div>
+        </form>
+      </article>;
+    })()}
     <PriceUpdatesPanel branchId={branchId} onChanged={() => void load()} />
     <input className="catalogue-search" placeholder="Search by brand, salt, company, or barcode" value={query} onChange={(event) => setQuery(event.target.value)} />
     <article className="panel catalogue-table">
@@ -106,6 +133,7 @@ export function CataloguePage({ branchId }: { branchId: string }) {
           <button className="secondary" onClick={() => edit(product, "rackLocation", "Rack location")}>Rack</button>
           <button className="secondary" onClick={() => edit(product, "retailPriceOverride", "Shop price per pack")}>Price</button>
           <button className="secondary" onClick={() => edit(product, "lowStockThreshold", "Low-stock alert at (base units)")}>Alert</button>
+          <button className="secondary" onClick={() => { setPacking({ product, strips: String(product.unitsPerPack), tablets: String(product.tabletsPerStrip) }); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Packing</button>
           {product.masterProductId && <button className="secondary" onClick={() => void showHistory(product)}>History</button>}
         </div>
       </div>)}
