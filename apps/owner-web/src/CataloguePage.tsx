@@ -4,7 +4,7 @@ import { PriceUpdatesPanel } from "./PriceUpdatesPanel";
 import { apiFetch, errorMessage, jsonBody } from "./session";
 
 const money = (value: number | null) => value == null ? "—" : `PKR ${value.toFixed(2)}`;
-const emptyItem = { name: "", category: "cosmetic" as ProductCategory, company: "", barcode: "", unitsPerPack: 1, retailPrice: "" };
+const emptyItem = { name: "", category: "cosmetic" as ProductCategory, company: "", barcode: "", unitsPerPack: 1, tabletsPerStrip: 1, retailPrice: "" };
 
 type PriceHistory = { current: MasterPriceEntry | null; scheduled: MasterPriceEntry | null; history: MasterPriceEntry[] };
 
@@ -52,6 +52,9 @@ export function CataloguePage({ branchId }: { branchId: string }) {
     if (response.ok) setHistory({ product, prices: await response.json() });
   }
 
+  const isMedicine = item.category === "medicine";
+  const tabletsPerPack = (Number(item.unitsPerPack) || 1) * (Number(item.tabletsPerStrip) || 1);
+
   async function addItem(event: FormEvent) {
     event.preventDefault();
     const ok = await send("POST", {
@@ -61,6 +64,8 @@ export function CataloguePage({ branchId }: { branchId: string }) {
       company: item.company || undefined,
       barcode: item.barcode || undefined,
       unitsPerPack: Number(item.unitsPerPack) || 1,
+      // Only medicines come in strips of tablets; other items are packs of pieces.
+      tabletsPerStrip: isMedicine ? Number(item.tabletsPerStrip) || 1 : 1,
       retailPrice: item.retailPrice === "" ? undefined : Number(item.retailPrice)
     }, `${item.name} added to the shop catalogue`);
     if (ok) { setItem(emptyItem); setAdding(false); }
@@ -77,7 +82,11 @@ export function CataloguePage({ branchId }: { branchId: string }) {
         </select></label>
         <label className="field">Company (optional)<input value={item.company} onChange={(event) => setItem({ ...item, company: event.target.value })} /></label>
         <label className="field">Barcode (optional)<input value={item.barcode} onChange={(event) => setItem({ ...item, barcode: event.target.value })} /></label>
-        <label className="field">Pieces per pack<input type="number" min="1" value={item.unitsPerPack} onChange={(event) => setItem({ ...item, unitsPerPack: Number(event.target.value) })} /></label>
+        {isMedicine ? <>
+          <label className="field">Strips per pack<input type="number" min="1" max="1000" required value={item.unitsPerPack} onChange={(event) => setItem({ ...item, unitsPerPack: Number(event.target.value) })} /></label>
+          <label className="field">Tablets per strip<input type="number" min="1" max="1000" required value={item.tabletsPerStrip} onChange={(event) => setItem({ ...item, tabletsPerStrip: Number(event.target.value) })} /></label>
+          <p className="field-note">1 pack = {Number(item.unitsPerPack) || 1} strip{Number(item.unitsPerPack) === 1 ? "" : "s"} × {Number(item.tabletsPerStrip) || 1} tablet{Number(item.tabletsPerStrip) === 1 ? "" : "s"} = {tabletsPerPack} tablets. Use 1 for a medicine sold only whole, such as a syrup.</p>
+        </> : <label className="field">Pieces per pack<input type="number" min="1" max="1000" value={item.unitsPerPack} onChange={(event) => setItem({ ...item, unitsPerPack: Number(event.target.value) })} /></label>}
         <label className="field">Price per pack (PKR)<input type="number" min="0" step="0.01" value={item.retailPrice} onChange={(event) => setItem({ ...item, retailPrice: event.target.value })} /></label>
         <div className="form-buttons"><button type="submit">Save item</button><button type="button" className="secondary" onClick={() => { setAdding(false); setItem(emptyItem); }}>Cancel</button></div>
       </form>
