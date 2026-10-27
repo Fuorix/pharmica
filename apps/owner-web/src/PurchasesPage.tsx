@@ -1,8 +1,9 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import type { CatalogueProduct, CatalogueSearchResponse, MasterProductSummary, PurchaseSummary, ReceivePurchaseResponse } from "@pharmica/contracts";
+import { packingLabel } from "@pharmica/domain";
 import { apiFetch, errorMessage, jsonBody } from "./session";
 
-type Line = { key: string; productId?: string; masterProductId?: string; name: string; official: number | null; batchNo: string; expiryDate: string; quantity: string; bonusQuantity: string; costPrice: string; discount: string; retailPrice: string };
+type Line = { key: string; productId?: string; masterProductId?: string; name: string; packing: string; official: number | null; batchNo: string; expiryDate: string; quantity: string; bonusQuantity: string; costPrice: string; discount: string; retailPrice: string };
 type PriceReport = { id: string; oldPrice: string; newPrice: string; createdAt: string; product: { name: string; masterProduct: { name: string } | null }; batch: { batchNo: string } | null; purchase: { invoiceNumber: string | null; supplier: { name: string } } | null };
 
 const money = (value: number) => `PKR ${value.toLocaleString("en-PK", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -34,8 +35,9 @@ export function PurchasesPage({ branchId }: { branchId: string }) {
     return () => window.clearTimeout(timer);
   }, [query, branchId]);
 
-  function addLine(item: { id: string; name: string; officialRetailPrice: number | null; sellingPrice?: number | null }, kind: "branch" | "master") {
-    setLines([...lines, { key: crypto.randomUUID(), ...(kind === "branch" ? { productId: item.id } : { masterProductId: item.id }), name: item.name, official: item.officialRetailPrice, batchNo: "", expiryDate: "", quantity: "", bonusQuantity: "0", costPrice: "", discount: "0", retailPrice: String(item.sellingPrice ?? item.officialRetailPrice ?? "") }]);
+  function addLine(item: { id: string; name: string; officialRetailPrice: number | null; sellingPrice?: number | null; unitsPerPack: number; tabletsPerStrip: number; category?: string }, kind: "branch" | "master") {
+    const packing = packingLabel({ stripsPerPack: item.unitsPerPack, tabletsPerStrip: item.tabletsPerStrip }, (item.category ?? "medicine") === "medicine");
+    setLines([...lines, { key: crypto.randomUUID(), ...(kind === "branch" ? { productId: item.id } : { masterProductId: item.id }), name: item.name, packing, official: item.officialRetailPrice, batchNo: "", expiryDate: "", quantity: "", bonusQuantity: "0", costPrice: "", discount: "0", retailPrice: String(item.sellingPrice ?? item.officialRetailPrice ?? "") }]);
     setQuery("");
   }
   const update = (key: string, change: Partial<Line>) => setLines(lines.map((line) => line.key === key ? { ...line, ...change } : line));
@@ -85,7 +87,7 @@ export function PurchasesPage({ branchId }: { branchId: string }) {
         </div>}
         {lines.length > 0 && <table className="detail-table purchase-lines"><thead><tr><th>Item</th><th>Batch</th><th>Expiry</th><th>Packs</th><th>Bonus</th><th>Cost/pack</th><th>Discount</th><th>Retail/pack</th><th /></tr></thead><tbody>
           {lines.map((line) => <tr key={line.key}>
-            <td>{line.name}{line.official != null && line.retailPrice !== "" && Math.abs(num(line.retailPrice) - line.official) > 0.005 ? <small className="warning">differs from master {money(line.official)}</small> : null}</td>
+            <td>{line.name}<small className="line-packing">{line.packing}</small>{line.official != null && line.retailPrice !== "" && Math.abs(num(line.retailPrice) - line.official) > 0.005 ? <small className="warning">differs from master {money(line.official)}</small> : null}</td>
             <td><input required value={line.batchNo} onChange={(event) => update(line.key, { batchNo: event.target.value.toUpperCase() })} /></td>
             <td><input required type="date" value={line.expiryDate} onChange={(event) => update(line.key, { expiryDate: event.target.value })} /></td>
             <td><input inputMode="numeric" value={line.quantity} onChange={(event) => update(line.key, { quantity: event.target.value.replace(/\D/g, "") })} /></td>

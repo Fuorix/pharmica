@@ -1,6 +1,6 @@
 import { FormEvent, useMemo, useRef, useState } from "react";
 import type { CatalogueProduct, MasterProductSummary, PosStaffMember } from "@pharmica/contracts";
-import { NEAR_EXPIRY_DAYS, parseGs1, purchaseTotals } from "@pharmica/domain";
+import { NEAR_EXPIRY_DAYS, packingLabel, parseGs1, purchaseTotals } from "@pharmica/domain";
 import { OfflineError, type PosEngine, type ReceiveInput } from "../local/engine";
 import { searchCatalogue } from "../local/state";
 import type { EngineState } from "../local/engine";
@@ -11,6 +11,8 @@ type Draft = {
   productId?: string;
   master?: MasterProductSummary;
   name: string;
+  /** How a pack is made up, shown so it can be checked against the box. */
+  packing: string;
   officialRetailPrice: number | null;
   batchNo: string;
   expiryDate: string;
@@ -52,6 +54,7 @@ export function ReceivePanel({ engine, state, user }: { engine: PosEngine; state
       key: crypto.randomUUID(),
       ...(choice.kind === "branch" ? { productId: product.id } : { master: choice.product }),
       name: product.name,
+      packing: packingLabel({ stripsPerPack: product.unitsPerPack, tabletsPerStrip: product.tabletsPerStrip }, choice.kind === "master" || choice.product.category === "medicine"),
       officialRetailPrice: product.officialRetailPrice,
       batchNo: scanned?.batchNo ?? "",
       expiryDate: scanned?.expiryDate ?? "",
@@ -172,6 +175,7 @@ export function ReceivePanel({ engine, state, user }: { engine: PosEngine; state
 
     {draft && <form className="draft" onSubmit={addLine} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setDraft(null); scanRef.current?.focus(); } }}>
       <h3>{draft.name}{draft.master ? " · first time in this branch" : ""}</h3>
+      <p className="hint">{draft.packing}. Check this matches the box; the owner can correct it under Catalogue → Packing.</p>
       <div className="draft-grid">
         <label>Batch no.<input autoFocus={!draft.batchNo} value={draft.batchNo} onChange={(event) => setDraft({ ...draft, batchNo: event.target.value.toUpperCase() })} /></label>
         <label>Expiry<input type="date" value={draft.expiryDate} onChange={(event) => setDraft({ ...draft, expiryDate: event.target.value })} /></label>
@@ -194,7 +198,7 @@ export function ReceivePanel({ engine, state, user }: { engine: PosEngine; state
       <tbody>{lines.map((line, index) => {
         const priced = "error" in totals ? null : totals.lines[index];
         return <tr key={line.key}>
-          <td>{line.name}</td><td>{line.batchNo}</td><td>{line.expiryDate}</td><td>{line.quantity || 0}</td><td>{line.bonusQuantity}</td>
+          <td>{line.name}<small className="line-packing">{line.packing}</small></td><td>{line.batchNo}</td><td>{line.expiryDate}</td><td>{line.quantity || 0}</td><td>{line.bonusQuantity}</td>
           <td>{num(line.costPrice).toFixed(2)}</td><td>{num(line.discount).toFixed(2)}</td><td>{priced ? priced.net.toFixed(2) : "—"}</td><td>{priced ? priced.effectiveCost.toFixed(2) : "—"}</td><td>{num(line.retailPrice).toFixed(2)}</td>
           <td><button className="link" onClick={() => setLines(lines.filter((entry) => entry.key !== line.key))}>remove</button></td>
         </tr>;

@@ -293,3 +293,4 @@ input[type=file]::file-selector-button { font: inherit; font-weight: 600; border
 .form-buttons { grid-column: 1 / -1; display: flex; gap: 8px; }
 .add-item-panel { margin-bottom: 18px; }
 .field-note { grid-column: 1 / -1; margin: -4px 0 0; color: var(--muted); font-size: 13px; }
+.line-packing { display: block; color: var(--muted); font-size: 12px; }

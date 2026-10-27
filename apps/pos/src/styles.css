@@ -260,3 +260,4 @@ input::placeholder { color: #8a9a96; }
 
 /* Form buttons keep their natural width; only "Complete sale" (wide) and the checkout bar span the panel. */
 .adjust-form > button, .stack > button:not(.wide) { align-self: flex-start; }
+.line-packing { display: block; color: var(--muted); font-size: 12px; }
