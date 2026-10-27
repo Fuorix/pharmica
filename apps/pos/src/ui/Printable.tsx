@@ -87,7 +87,7 @@ export function Printable({ job, header }: { job: PrintJob | null; header: Heade
     <p>Receipt {sale.receiptNo}<br />{dateTime(isReturn ? job.saleReturn.at : sale.createdAt)}<br />Cashier: {isReturn ? job.saleReturn.userName : sale.userName}{sale.customerName ? <><br />Customer: {sale.customerName}</> : null}{sale.prescription ? <><br />Rx: {sale.prescription.patientName} · {sale.prescription.doctorName}{sale.prescription.prescriptionRef ? ` · ${sale.prescription.prescriptionRef}` : ""}</> : null}</p>
     <table className="items"><tbody>
       {lines.map((line) => <tr key={line.lineId}>
-        <td>{line.name}<small>{unitLabel(line.unit, line.quantity)} × {plainMoney(line.unitPrice)}{line.discount ? ` − ${plainMoney(line.discount)}` : ""} · B:{line.batchNo}</small></td>
+        <td>{line.name}<small>{unitLabel(line.unit, line.quantity, line.pieces)} × {plainMoney(line.unitPrice)}{line.discount ? ` − ${plainMoney(line.discount)}` : ""} · B:{line.batchNo}</small></td>
         <td>{plainMoney(line.lineTotal)}</td>
       </tr>)}
     </tbody></table>

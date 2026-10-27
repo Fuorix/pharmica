@@ -6,7 +6,7 @@ import { searchCatalogue, substitutesFor } from "./local/state";
 import type { LocalSale } from "./local/types";
 import { usePosSession, useEngineState } from "./session";
 import { CustomerDialog, DiscountDialog, HelpDialog, PaymentDialog, PrescriptionDialog, SubstitutesDialog, SyncDialog } from "./ui/dialogs";
-import { money, stockLabel, unitLabel } from "./ui/format";
+import { money, stockLabel, unitLabel, unitName } from "./ui/format";
 import { Printable, printNow, type PrintJob } from "./ui/Printable";
 import { SalesDialog } from "./ui/SalesDialog";
 import { ReceivePanel } from "./ui/ReceivePanel";
@@ -257,6 +257,7 @@ export function App() {
           <div className="cart-lines">
             {items.map((item) => {
               const product = catalogueById.get(item.productId);
+              const pieces = !!product && product.category !== "medicine";
               const lines = quote.cart.lines.filter((line) => line.itemKey === item.key);
               const problem = quote.cart.problems.find((entry) => entry.itemKey === item.key);
               const lineTotal = lines.reduce((sum, line) => sum + line.lineTotal, 0);
@@ -264,10 +265,10 @@ export function App() {
                 <div>
                   <strong>{product?.name ?? "Unknown item"}</strong>
                   <span className="row-controls">
-                    <select aria-label="Unit" value={item.unit} onChange={(event) => setItems(items.map((entry) => entry.key === item.key ? { ...entry, unit: event.target.value as SaleUnit, discount: 0 } : entry))}>{(product?.sellableUnits ?? ["pack"]).map((unit) => <option key={unit} value={unit}>{unit}</option>)}</select>
+                    <select aria-label="Unit" value={item.unit} onChange={(event) => setItems(items.map((entry) => entry.key === item.key ? { ...entry, unit: event.target.value as SaleUnit, discount: 0 } : entry))}>{(product?.sellableUnits ?? ["pack"]).map((unit) => <option key={unit} value={unit}>{unitName(unit, pieces)}</option>)}</select>
                     <input aria-label={`Quantity for ${product?.name}`} type="number" min={1} value={item.quantity} onChange={(event) => setItems(items.map((entry) => entry.key === item.key ? { ...entry, quantity: Math.max(1, Math.floor(Number(event.target.value) || 1)) } : entry))} />
                   </span>
-                  {problem ? <small className="warning-text">{problem.message}</small> : <small>{lines.map((line) => `${unitLabel(line.unit, line.quantity)} @ ${line.unitPrice.toFixed(2)} (B:${line.batchNo})`).join(" + ")}{item.discount ? ` · −${item.discount.toFixed(2)}` : ""}</small>}
+                  {problem ? <small className="warning-text">{problem.message}</small> : <small>{lines.map((line) => `${unitLabel(line.unit, line.quantity, pieces)} @ ${line.unitPrice.toFixed(2)} (B:${line.batchNo})`).join(" + ")}{item.discount ? ` · −${item.discount.toFixed(2)}` : ""}</small>}
                 </div>
                 <b>{problem ? "—" : money(lineTotal)}</b>
               </div>;

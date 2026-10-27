@@ -102,7 +102,7 @@ export function SalesDialog({ sales, currentShiftId, onClose, onReprint, onVoid,
       if (key === "x" && canReturn && sale.paymentMethod !== "credit") { event.preventDefault(); setReason(""); setQuantities({}); setMode({ name: "return", saleId: sale.id, exchange: true }); }
     }}>
       <p className="muted">{dateTime(sale.createdAt)} · {sale.userName} · {sale.paymentMethod}{sale.customerName ? ` · ${sale.customerName}` : ""} · <b>{sale.status}</b>{sale.voidReason ? ` (${sale.voidReason})` : ""}</p>
-      <table className="return-table"><tbody>{sale.lines.map((line) => <tr key={line.lineId}><td>{line.name}<small>batch {line.batchNo}</small></td><td>{unitLabel(line.unit, line.quantity)}</td><td>{money(line.lineTotal)}</td></tr>)}</tbody></table>
+      <table className="return-table"><tbody>{sale.lines.map((line) => <tr key={line.lineId}><td>{line.name}<small>batch {line.batchNo}</small></td><td>{unitLabel(line.unit, line.quantity, line.pieces)}</td><td>{money(line.lineTotal)}</td></tr>)}</tbody></table>
       <p><b>Total {money(sale.total)}</b>{sale.discount ? ` after ${money(sale.discount)} discount` : ""}</p>
       {sale.returns.map((item) => <p key={item.returnId} className="muted">Returned {dateTime(item.at)}: {money(item.amount)} by {item.method} — {item.reason}</p>)}
       <div className="row">

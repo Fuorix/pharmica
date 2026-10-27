@@ -199,6 +199,7 @@ export class PosEngine {
 
     const receiptSeq = await this.nextSequence("receiptSeq");
     const names = new Map(this.requireStock().catalogue.map((product) => [product.id, product.name]));
+    const pieces = new Set(this.requireStock().catalogue.filter((product) => product.category !== "medicine").map((product) => product.id));
     const sale: LocalSale = {
       id: newId(),
       receiptNo: formatReceiptNo(this.deviceId, receiptSeq),
@@ -209,7 +210,7 @@ export class PosEngine {
       customerId: customer?.id,
       customerName: customer?.name,
       paymentMethod: input.paymentMethod,
-      lines: cart.lines.map((line) => ({ lineId: newId(), productId: line.productId, name: names.get(line.productId) ?? "", batchId: line.batchId, batchNo: line.batchNo, unit: line.unit, quantity: line.quantity, unitPrice: line.unitPrice, discount: line.discount, lineTotal: line.lineTotal, baseUnits: line.baseUnits })),
+      lines: cart.lines.map((line) => ({ lineId: newId(), productId: line.productId, name: names.get(line.productId) ?? "", ...(pieces.has(line.productId) ? { pieces: true } : {}), batchId: line.batchId, batchNo: line.batchNo, unit: line.unit, quantity: line.quantity, unitPrice: line.unitPrice, discount: line.discount, lineTotal: line.lineTotal, baseUnits: line.baseUnits })),
       subtotal: totals.subtotal,
       itemDiscount: totals.itemDiscount,
       billDiscount: totals.billDiscount,

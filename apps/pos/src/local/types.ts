@@ -41,6 +41,8 @@ export interface LocalSaleLine {
   lineId: string;
   productId: string;
   name: string;
+  /** Sold by the piece rather than by strip or tablet (items other than medicines). */
+  pieces?: boolean;
   batchId: string;
   batchNo: string;
   unit: SaleUnit;

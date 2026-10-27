@@ -3,7 +3,9 @@ import type { SaleUnit } from "@pharmica/contracts";
 export const money = (value: number) => `PKR ${value.toLocaleString("en-PK", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 export const plainMoney = (value: number) => value.toLocaleString("en-PK", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 export const dateTime = (iso: string) => new Date(iso).toLocaleString("en-PK", { dateStyle: "medium", timeStyle: "short" });
-export const unitLabel = (unit: SaleUnit, quantity: number) => `${quantity} ${unit}${quantity === 1 ? "" : "s"}`;
+/** Items other than medicines are sold by the pack or by the piece, never by the "strip" or "tablet". */
+export const unitName = (unit: SaleUnit, pieces = false) => pieces && unit !== "pack" ? "piece" : unit;
+export const unitLabel = (unit: SaleUnit, quantity: number, pieces = false) => `${quantity} ${unitName(unit, pieces)}${quantity === 1 ? "" : "s"}`;
 
 /** Stock in the largest whole unit, e.g. "3 packs + 4 loose". */
 export function stockLabel(quantity: number, unitsPerPack: number, tabletsPerStrip: number): string {
