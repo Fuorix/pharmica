@@ -78,12 +78,12 @@ export function substitutesFor(product: CatalogueProduct, catalogue: CataloguePr
     .sort((a, b) => b.stockQuantity - a.stockQuantity);
 }
 
-/** Case-insensitive search across name, generic (salt), company, and exact barcode; barcode hits come first. */
+/** Case-insensitive search across name, generic (salt), company, and barcode prefix; barcode hits come first. */
 export function searchCatalogue(catalogue: CatalogueProduct[], query: string, limit = 30): CatalogueProduct[] {
   const text = query.trim().toLowerCase();
   if (!text) return [];
   const score = (product: CatalogueProduct) => {
-    if (product.barcode === query.trim()) return 0;
+    if (product.barcode?.toLowerCase().startsWith(text)) return 0;
     const name = product.name.toLowerCase();
     if (name.startsWith(text)) return 1;
     if (name.includes(text) || product.brand?.toLowerCase().includes(text)) return 2;
@@ -100,12 +100,12 @@ export function searchCatalogue(catalogue: CatalogueProduct[], query: string, li
 }
 
 
-/** Searches the master list stored on the counter the same way as the catalogue: barcode first, then names. */
+/** Searches the master list stored on the counter the same way as the catalogue: barcode prefix first, then names. */
 export function searchMasterList(master: MasterProductSummary[], query: string, limit = 20): MasterProductSummary[] {
   const text = query.trim().toLowerCase();
   if (text.length < 2) return [];
   const score = (product: MasterProductSummary) => {
-    if (product.barcode === query.trim()) return 0;
+    if (product.barcode?.toLowerCase().startsWith(text)) return 0;
     const name = product.name.toLowerCase();
     if (name.startsWith(text)) return 1;
     if (name.includes(text) || product.brand?.toLowerCase().includes(text)) return 2;
