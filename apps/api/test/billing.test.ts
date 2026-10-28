@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import type { BillingOverview, CollectionsDashboard, TenantDetail } from "@pharmica/contracts";
+import { addMonths } from "@pharmica/domain";
 import { db } from "@pharmica/database/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as collectionsRoute from "../app/api/v1/admin/collections/route";
@@ -137,9 +138,7 @@ describe("payments", () => {
     expect(rest.body).toMatchObject({ invoicePaid: true });
 
     const after = await db.subscription.findUniqueOrThrow({ where: { organisationId: t.orgA.id } });
-    const expected = new Date(before);
-    expected.setUTCMonth(expected.getUTCMonth() + 1);
-    expect(after.paidThrough.toISOString().slice(0, 10)).toBe(expected.toISOString().slice(0, 10));
+    expect(after.paidThrough.toISOString().slice(0, 10)).toBe(addMonths(before, 1).toISOString().slice(0, 10));
     const billing = (await call(billingRoute.GET, { token: owner })).body as unknown as BillingOverview;
     expect(billing.payments.map((payment) => [payment.reference, payment.amount, payment.invoiceNumber])).toEqual([["HBL-778", 4000, invoice.number], ["RB-0012", 2000, invoice.number]]);
     expect(billing.invoices[0]).toMatchObject({ status: "PAID", balance: 0 });
