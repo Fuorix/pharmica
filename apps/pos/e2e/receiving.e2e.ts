@@ -13,9 +13,13 @@ test("a counter receives a never-stocked medicine from its 2D code with no inter
   const perPack = receive.unitsPerPack * receive.tabletsPerStrip;
 
   await page.goto("/");
-  // Setting the counter up with the cashier's PIN signs the cashier in.
+  // Setting the counter up by name, then signing the cashier in.
   await page.getByLabel("Counter name").fill("E2ETST-2");
-  await page.getByLabel("Your PIN").fill("1234");
+  await page.getByRole("button", { name: "Set up counter" }).click();
+  await page.getByRole("button", { name: "Skip" }).click();
+  await expect(page.getByText("Who is at the counter?")).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("button", { name: "E2E Cashier" }).click();
+  await page.getByLabel("PIN for E2E Cashier").fill("1234");
   await page.keyboard.press("Enter");
   await page.getByLabel("Opening cash (PKR)").fill("0");
   await page.keyboard.press("Enter");

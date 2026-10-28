@@ -174,5 +174,5 @@ for (const product of await db.product.findMany({ where: { branchId: branch.id, 
   await setDemoStock(product, "DEMO-001", { quantity: 0 });
 }
 
-console.log("Seeded owner@demo.local, cashier@demo.local, admin@pharmica.local, and the counter PHRM24-1 (link it on the POS with a staff PIN).");
+console.log("Seeded owner@demo.local, cashier@demo.local, admin@pharmica.local, and the counter PHRM24-1 (link it on the POS by entering the counter name).");
 await db.$disconnect();

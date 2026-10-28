@@ -88,9 +88,9 @@ describe("tenant onboarding", () => {
     expect((await call(usersRoute.GET, { token })).status).toBe(200);
     expect((await call(loginRoute.POST, { method: "POST", body: { login: "bilal@alshifa.pk", credential: temporaryPassword } })).status).toBe(401);
 
-    // The owner adds a cashier; the counter is linked with its name and the cashier's PIN, and the cashier signs in.
+    // The owner adds a cashier; the counter is linked by its name, and the cashier signs in with a PIN.
     await call(usersRoute.POST, { method: "POST", token, body: { name: "Kashif", login: "kashif-alshifa", role: "cashier", branchId: tenant.branches[0].id, pin: PIN } });
-    const activated = await call(linkRoute.POST, { method: "POST", body: { deviceName: tenant.devices[0].name, pin: PIN } });
+    const activated = await call(linkRoute.POST, { method: "POST", body: { deviceName: tenant.devices[0].name } });
     expect(activated.status).toBe(201);
     const deviceToken = activated.body.deviceToken as string;
     expect((await call(snapshotRoute.GET, { deviceToken })).status).toBe(200);

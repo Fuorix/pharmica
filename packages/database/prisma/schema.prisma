@@ -92,7 +92,7 @@ enum UserRole {
 model Device {
   id             String          @id @default(cuid())
   branchId       String
-  /// `<shopCode>-<counterNumber>`, e.g. `K7P2QX-1`. Typed once with a staff PIN to link a computer to this counter.
+  /// `<shopCode>-<counterNumber>`, e.g. `K7P2QX-1`. Typed once on the POS to link a computer to this counter.
   name           String          @unique
   counterNumber  Int
   /// Set while a computer is linked; cleared when the owner resets the counter.

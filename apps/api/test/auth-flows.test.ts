@@ -7,6 +7,7 @@ import * as login from "../app/api/v1/auth/login/route";
 import * as logout from "../app/api/v1/auth/logout/route";
 import * as me from "../app/api/v1/auth/me/route";
 import * as pinLogin from "../app/api/v1/auth/pin-login/route";
+import * as posStaff from "../app/api/v1/pos/staff/route";
 import * as sales from "../app/api/v1/sales/route";
 import * as users from "../app/api/v1/users/route";
 import { getSession } from "../src/auth/session";
@@ -83,45 +84,70 @@ describe("sessions", () => {
 describe("POS counter linking and PIN login", () => {
   const counter2 = () => db.device.create({ data: { branchId: t.branchA1.id, name: "AAAA22-2", counterNumber: 2 } });
 
-  it("links a counter with its name and a staff PIN, once", async () => {
+  it("links a counter by its name, once, without a PIN", async () => {
     const device = await counter2();
-    const first = await call(link.POST, { method: "POST", body: { deviceName: " aaaa22 - 02 ", pin: PIN } });
+    const first = await call(link.POST, { method: "POST", body: { deviceName: " aaaa22 - 02 " } });
     expect(first.status).toBe(201);
     expect(first.body).toMatchObject({ device: { id: device.id, name: "AAAA22-2", branchId: t.branchA1.id } });
+    expect(first.body).not.toHaveProperty("userId");
     expect(String(first.body.deviceToken)).toMatch(new RegExp(`^${device.id}\\.`));
-    expect([t.ownerA.id, t.cashierA1.id]).toContain(first.body.userId);
     expect((await call(deviceMe.GET, { deviceToken: String(first.body.deviceToken) })).status).toBe(200);
     expect(await auditActions("device.linked")).toBe(1);
+    expect(await db.auditLog.findFirst({ where: { action: "device.linked" } })).toMatchObject({ userId: null });
 
     // A second computer cannot take the same counter while it is linked.
-    const again = await call(link.POST, { method: "POST", body: { deviceName: "AAAA22-2", pin: PIN } });
+    const again = await call(link.POST, { method: "POST", body: { deviceName: "AAAA22-2" } });
     expect(again.status).toBe(409);
     expect(again.body.error?.code).toBe("COUNTER_IN_USE");
   });
 
-  it("refuses a wrong PIN, a PIN from another branch or pharmacy, and unknown counters, without saying which", async () => {
+  it("refuses an unknown counter name, and still links when nobody at the branch has a PIN", async () => {
     await counter2();
     await db.user.update({ where: { id: t.ownerA.id }, data: { pinHash: null } });
     await db.user.update({ where: { id: t.cashierA1.id }, data: { pinHash: null } });
-    // cashier-a2 works at branch A2 and owner-b at another pharmacy; both still have PIN 4321.
-    for (const body of [{ deviceName: "AAAA22-2", pin: "9999" }, { deviceName: "AAAA22-2", pin: PIN }, { deviceName: "ZZZZ22-1", pin: PIN }]) {
-      const response = await call(link.POST, { method: "POST", body });
-      expect(response.status).toBe(401);
-      expect(response.body.error?.message).toBe("The counter name or PIN is not right");
-    }
-    expect((await call(link.POST, { method: "POST", body: { deviceName: "not a counter", pin: PIN } })).status).toBe(400);
+    const unknown = await call(link.POST, { method: "POST", body: { deviceName: "ZZZZ22-1" } });
+    expect(unknown.status).toBe(401);
+    expect(unknown.body.error?.message).toBe("That counter name is not right");
+    expect((await call(link.POST, { method: "POST", body: { deviceName: "not a counter" } })).status).toBe(400);
+    expect((await call(link.POST, { method: "POST", body: { deviceName: "AAAA22-2" } })).status).toBe(201);
   });
 
-  it("locks a counter name after five wrong attempts", async () => {
+  it("locks an unknown counter name after five wrong attempts", async () => {
     await counter2();
-    for (let attempt = 0; attempt < 5; attempt++) await call(link.POST, { method: "POST", body: { deviceName: "AAAA22-2", pin: "0000" } });
-    expect((await call(link.POST, { method: "POST", body: { deviceName: "AAAA22-2", pin: PIN } })).status).toBe(429);
+    for (let attempt = 0; attempt < 5; attempt++) await call(link.POST, { method: "POST", body: { deviceName: "ZZZZ22-1" } });
+    expect((await call(link.POST, { method: "POST", body: { deviceName: "ZZZZ22-1" } })).status).toBe(429);
+    expect((await call(link.POST, { method: "POST", body: { deviceName: "AAAA22-2" } })).status).toBe(201);
   });
 
   it("refuses a counter the owner turned off", async () => {
     const device = await counter2();
     await db.device.update({ where: { id: device.id }, data: { isActive: false } });
-    expect((await call(link.POST, { method: "POST", body: { deviceName: "AAAA22-2", pin: PIN } })).status).toBe(403);
+    expect((await call(link.POST, { method: "POST", body: { deviceName: "AAAA22-2" } })).status).toBe(403);
+  });
+
+  it("lets the linked counter add a cashier with its device token", async () => {
+    const device = await counter2();
+    const linked = await call(link.POST, { method: "POST", body: { deviceName: "AAAA22-2" } });
+    expect(linked.status).toBe(201);
+    const deviceToken = String(linked.body.deviceToken);
+    expect((await call(posStaff.POST, { method: "POST", body: { name: "Ali", login: "ali.counter", pin: "5555", maxDiscountPercent: 5 } })).status).toBe(401);
+
+    const created = await call(posStaff.POST, { method: "POST", deviceToken, body: { name: " Ali ", login: "Ali.Counter", pin: "5555", maxDiscountPercent: 5 } });
+    expect(created.status).toBe(201);
+    expect(created.body.user).toMatchObject({ name: "Ali", login: "ali.counter", role: "cashier", branchId: device.branchId, hasPin: true, maxDiscountPercent: 5 });
+    expect(created.body.user).not.toHaveProperty("pinHash");
+    expect(await auditActions("user.created")).toBe(1);
+
+    const userId = (created.body.user as { id: string }).id;
+    const names = ((await call(deviceMe.GET, { deviceToken })).body.users as Array<{ name: string }>).map((user) => user.name);
+    expect(names).toContain("Ali");
+    expect((await call(pinLogin.POST, { method: "POST", deviceToken, body: { userId, pin: "5555" } })).status).toBe(200);
+
+    expect((await call(posStaff.POST, { method: "POST", deviceToken, body: { name: "Ali 2", login: "ali.counter", pin: "6666", maxDiscountPercent: 5 } })).status).toBe(409);
+    expect((await call(posStaff.POST, { method: "POST", deviceToken, body: { name: "Bad", login: "bad-pin", pin: "12", maxDiscountPercent: 5 } })).status).toBe(400);
+    expect((await call(posStaff.POST, { method: "POST", deviceToken, body: { name: "Bad", login: "bad-discount", pin: "5555", maxDiscountPercent: 150 } })).status).toBe(400);
+    const omitted = await call(posStaff.POST, { method: "POST", deviceToken, body: { name: "No Limit", login: "no-limit", pin: "4444" } });
+    expect(omitted.body.user).toMatchObject({ maxDiscountPercent: 5, branchId: device.branchId });
   });
 
   it("lists only staff of the device's branch who have a PIN", async () => {
@@ -201,7 +227,7 @@ describe("sales require an active device", () => {
     expect(response.body.device).not.toHaveProperty("secretHash");
     expect(await auditActions("device.unlinked")).toBe(1);
     expect((await call(deviceMe.GET, { deviceToken: t.deviceA1.token })).status).toBe(401);
-    expect((await call(link.POST, { method: "POST", body: { deviceName: "AAAA22-1", pin: PIN } })).status).toBe(201);
+    expect((await call(link.POST, { method: "POST", body: { deviceName: "AAAA22-1" } })).status).toBe(201);
   });
 });
 
