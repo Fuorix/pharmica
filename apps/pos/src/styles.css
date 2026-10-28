@@ -195,6 +195,8 @@ input::placeholder { color: #8a9a96; }
 .auth-card input { padding: 14px; font-size: 20px; letter-spacing: 2px; }
 .auth-primary { background: var(--brand); border: 0; padding: 15px; color: #fff; font-weight: 700; font-size: 16px; border-radius: var(--radius); }
 .auth-primary:hover:not(:disabled) { background: var(--brand-dark); }
+.auth-skip { background: transparent; border: 1px solid var(--line-strong); color: var(--text); padding: 14px; font-weight: 600; }
+.auth-skip:hover:not(:disabled) { border-color: var(--brand); }
 .auth-error { color: var(--bad); background: var(--bad-soft); padding: 10px 12px; border-radius: var(--radius-sm); margin: 0; font-weight: 600; }
 .staff-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
 .staff { background: var(--surface); border: 1px solid var(--line-strong); color: var(--text); padding: 14px; text-align: left; display: flex; flex-direction: column; gap: 4px; border-radius: var(--radius); }

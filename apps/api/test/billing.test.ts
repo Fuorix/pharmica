@@ -12,12 +12,13 @@ import * as linkRoute from "../app/api/v1/devices/link/route";
 import * as devicesRoute from "../app/api/v1/devices/route";
 import * as exportRoute from "../app/api/v1/export/route";
 import * as snapshotRoute from "../app/api/v1/pos/snapshot/route";
+import * as posStaffRoute from "../app/api/v1/pos/staff/route";
 import * as syncRoute from "../app/api/v1/pos/sync/route";
 import * as cashBookRoute from "../app/api/v1/reports/cash-book/route";
 import * as dashboardRoute from "../app/api/v1/reports/dashboard/route";
 import * as usersRoute from "../app/api/v1/users/route";
 import { refreshSubscription } from "../src/billing/subscriptions";
-import { call, PIN, resetDatabase, seedTenants, webSession } from "./helpers";
+import { call, resetDatabase, seedTenants, webSession } from "./helpers";
 
 let t: Awaited<ReturnType<typeof seedTenants>>;
 let owner: string;
@@ -96,7 +97,8 @@ describe("grace mode", () => {
     await paidThrough(-40);
     expect((await call(devicesRoute.POST, { method: "POST", token: owner, body: { branchId: t.branchA1.id } })).body.error?.code).toBe("SUBSCRIPTION_LAPSED");
     expect((await call(usersRoute.POST, { method: "POST", token: owner, body: { name: "New", login: "new-cashier", role: "cashier", branchId: t.branchA1.id, pin: "5555" } })).status).toBe(402);
-    expect((await call(linkRoute.POST, { method: "POST", body: { deviceName: device.name, pin: PIN } })).status).toBe(402);
+    expect((await call(linkRoute.POST, { method: "POST", body: { deviceName: device.name } })).status).toBe(402);
+    expect((await call(posStaffRoute.POST, { method: "POST", deviceToken: t.deviceA1.token, body: { name: "New", login: "pos-new", pin: "5555", maxDiscountPercent: 5 } })).status).toBe(402);
     expect(await db.device.findUniqueOrThrow({ where: { id: device.id } })).toMatchObject({ secretHash: null });
   });
 });

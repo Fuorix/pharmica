@@ -6,13 +6,11 @@ import { checkPin, createPinVerifier, type PinVerifier } from "./local/pin";
 import { httpTransport } from "./local/transport";
 import { apiFetch, apiUrl, loadDevice, loadSignedInUserId, PosSessionContext, saveDevice, saveSignedInUserId, useEngineState, type PosDevice } from "./session";
 
-/** Who linked the counter, so they are signed in once the catalogue is down instead of typing their PIN twice. */
-type AutoSignIn = { userId: string; pin: string };
-
 type Stage =
   | { name: "loading" }
   | { name: "link"; notice?: string }
-  | { name: "ready"; engine: PosEngine; db: LocalDb; device: PosDevice; user: PosStaffMember | null; autoSignIn?: AutoSignIn };
+  | { name: "staff" }
+  | { name: "ready"; engine: PosEngine; db: LocalDb; device: PosDevice; user: PosStaffMember | null };
 
 const UNREACHABLE = "Cannot reach Pharmica. If the internet is working, the server may be starting up: wait a minute and try again.";
 
@@ -24,7 +22,7 @@ async function errorMessage(response: Response, fallback: string): Promise<strin
 export function AuthGate({ children }: { children: ReactNode }) {
   const [stage, setStage] = useState<Stage>({ name: "loading" });
 
-  const start = useCallback(async (options: { notice?: string; autoSignIn?: AutoSignIn } = {}) => {
+  const start = useCallback(async (options: { notice?: string } = {}) => {
     const stored = loadDevice();
     if (!stored) return setStage({ name: "link", notice: options.notice });
     const db = await openLocalDb();
@@ -32,7 +30,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     const savedId = loadSignedInUserId();
     const user = savedId ? engine.getState().snapshot?.staff.find((member) => member.id === savedId) ?? null : null;
     if (savedId && !user) saveSignedInUserId(null);
-    setStage({ name: "ready", engine, db, device: stored.device, user, autoSignIn: options.autoSignIn });
+    setStage({ name: "ready", engine, db, device: stored.device, user });
   }, []);
 
   useEffect(() => { void start(); }, [start]);
@@ -42,14 +40,15 @@ export function AuthGate({ children }: { children: ReactNode }) {
   useEffect(() => engine?.start(), [engine]);
 
   if (stage.name === "loading") return <main className="auth-state">Starting counter...</main>;
-  if (stage.name === "link") return <LinkScreen notice={stage.notice} onLinked={(autoSignIn) => void start({ autoSignIn })} />;
+  if (stage.name === "link") return <LinkScreen notice={stage.notice} onLinked={() => setStage({ name: "staff" })} />;
+  if (stage.name === "staff") return <StaffScreen onDone={() => start()} />;
   if (!stage.user) {
     const relink = () => {
       saveDevice(null);
       saveSignedInUserId(null);
-      void start({ notice: "Enter the counter name and your PIN to link this computer again. If the counter is still linked to another computer, the owner can unlink it under Staff & devices." });
+      void start({ notice: "Enter the counter name to link this computer again. If the counter is still linked to another computer, the owner can unlink it under Staff & devices." });
     };
-    return <PinScreen engine={stage.engine} db={stage.db} device={stage.device} autoSignIn={stage.autoSignIn} onSignedIn={(user) => { saveSignedInUserId(user.id); setStage({ ...stage, user, autoSignIn: undefined }); }} onRelink={relink} />;
+    return <PinScreen engine={stage.engine} db={stage.db} device={stage.device} onSignedIn={(user) => { saveSignedInUserId(user.id); setStage({ ...stage, user }); }} onRelink={relink} />;
   }
   const lock = () => {
     saveSignedInUserId(null);
@@ -59,10 +58,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
   return <PosSessionContext.Provider value={{ user: stage.user, device: stage.device, engine: stage.engine, lock }}>{children}</PosSessionContext.Provider>;
 }
 
-/** First run on a computer: the counter name from the owner panel (like K7P2QX-1) and the PIN of anyone who works there. */
-function LinkScreen({ notice, onLinked }: { notice?: string; onLinked: (autoSignIn: AutoSignIn) => void }) {
+/** First run on a computer: the counter name from Staff & devices (like K7P2QX-1). */
+function LinkScreen({ notice, onLinked }: { notice?: string; onLinked: () => void }) {
   const [name, setName] = useState("");
-  const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -72,11 +70,11 @@ function LinkScreen({ notice, onLinked }: { notice?: string; onLinked: (autoSign
     setError("");
     try {
       // A sleeping test server can take up to a minute to answer, so this waits longer than a normal request.
-      const response = await apiFetch("/api/v1/devices/link", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deviceName: name, pin }), signal: AbortSignal.timeout(75_000) });
+      const response = await apiFetch("/api/v1/devices/link", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deviceName: name }), signal: AbortSignal.timeout(75_000) });
       if (!response.ok) return setError(await errorMessage(response, "This counter could not be set up"));
       const linked = await response.json() as LinkDeviceResponse;
       saveDevice({ deviceToken: linked.deviceToken, device: linked.device });
-      onLinked({ userId: linked.userId, pin });
+      onLinked();
     } catch {
       setError(UNREACHABLE);
     } finally {
@@ -87,15 +85,59 @@ function LinkScreen({ notice, onLinked }: { notice?: string; onLinked: (autoSign
   return <main className="auth-page"><form className="auth-card" onSubmit={submit}>
     <p className="eyebrow">PHARMICA POS · SETUP</p>
     <h1>Set up this counter</h1>
-    <p className="auth-note">{notice ?? "Enter the counter name from the owner panel (Staff & devices) and your PIN. This is done once per computer and needs the internet."}</p>
+    <p className="auth-note">{notice ?? "Enter the counter name from the owner panel (Staff & devices). This is done once per computer and needs the internet."}</p>
     <label>Counter name<input autoFocus required value={name} onChange={(event) => setName(event.target.value.toUpperCase())} placeholder="e.g. K7P2QX-1" autoComplete="off" spellCheck={false} /></label>
-    <label>Your PIN<input required type="password" inputMode="numeric" autoComplete="off" maxLength={6} value={pin} onChange={(event) => { setPin(event.target.value.replace(/\D/g, "")); setError(/\D/.test(event.target.value) ? "The PIN is numbers only." : ""); }} /></label>
     {error && <p className="auth-error">{error}</p>}
-    <button className="auth-primary" disabled={busy || !name.trim() || pin.length < 4}>{busy ? "Setting up..." : "Set up counter"}</button>
+    <button className="auth-primary" disabled={busy || !name.trim()}>{busy ? "Setting up..." : "Set up counter"}</button>
   </form></main>;
 }
 
-function PinScreen({ engine, db, device, autoSignIn, onSignedIn, onRelink }: { engine: PosEngine; db: LocalDb; device: PosDevice; autoSignIn?: AutoSignIn; onSignedIn: (user: PosStaffMember) => void; onRelink: () => void }) {
+/** Optional cashier, added on this counter's branch, before anyone signs in. */
+function StaffScreen({ onDone }: { onDone: () => Promise<void> }) {
+  const [name, setName] = useState("");
+  const [login, setLogin] = useState("");
+  const [discount, setDiscount] = useState("5");
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const percent = Number(discount);
+  const discountOk = discount !== "" && Number.isInteger(percent) && percent >= 0 && percent <= 100;
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!discountOk) return setError("Discount limit must be a whole percent from 0 to 100");
+    setBusy(true);
+    setError("");
+    try {
+      const response = await apiFetch("/api/v1/pos/staff", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name, login, pin, maxDiscountPercent: percent })
+      });
+      if (!response.ok) return setError(await errorMessage(response, "This cashier could not be added"));
+      await onDone();
+    } catch {
+      setError(UNREACHABLE);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <main className="auth-page"><form className="auth-card" onSubmit={submit}>
+    <p className="eyebrow">PHARMICA POS · SETUP</p>
+    <h1>Add a cashier</h1>
+    <p className="auth-note">Optional. Add the person who will use this counter, or skip if the owner already added staff under Staff & devices. They sign in with their PIN on the next screen.</p>
+    <label>Full name<input autoFocus required value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" /></label>
+    <label>Login<input required value={login} onChange={(event) => setLogin(event.target.value)} placeholder="e.g. ali.counter" autoComplete="off" spellCheck={false} /></label>
+    <label>Discount limit %<input inputMode="numeric" value={discount} onChange={(event) => { setDiscount(event.target.value.replace(/\D/g, "").slice(0, 3)); setError(""); }} /></label>
+    <label>PIN<input required type="password" inputMode="numeric" autoComplete="off" maxLength={6} value={pin} onChange={(event) => { setPin(event.target.value.replace(/\D/g, "")); setError(/\D/.test(event.target.value) ? "The PIN is numbers only." : ""); }} /></label>
+    {error && <p className="auth-error">{error}</p>}
+    <button className="auth-primary" disabled={busy || !name.trim() || !login.trim() || pin.length < 4 || !discountOk}>{busy ? "Adding..." : "Continue"}</button>
+    <button type="button" className="auth-skip" disabled={busy} onClick={() => { setBusy(true); void onDone().finally(() => setBusy(false)); }}>Skip</button>
+  </form></main>;
+}
+
+function PinScreen({ engine, db, device, onSignedIn, onRelink }: { engine: PosEngine; db: LocalDb; device: PosDevice; onSignedIn: (user: PosStaffMember) => void; onRelink: () => void }) {
   const state = useEngineState(engine);
   const staff = useMemo(() => state.snapshot?.staff ?? [], [state.snapshot]);
   const [selected, setSelected] = useState<PosStaffMember | null>(null);
@@ -103,7 +145,6 @@ function PinScreen({ engine, db, device, autoSignIn, onSignedIn, onRelink }: { e
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const pinRef = useRef<HTMLInputElement>(null);
-  const autoTried = useRef(false);
 
   useEffect(() => { if (selected) pinRef.current?.focus(); }, [selected]);
 
@@ -155,16 +196,6 @@ function PinScreen({ engine, db, device, autoSignIn, onSignedIn, onRelink }: { e
       setBusy(false);
     }
   }
-
-  // Right after linking, the person who linked the counter is signed in as soon as their name has downloaded.
-  const autoMember = autoSignIn ? staff.find((member) => member.id === autoSignIn.userId) : undefined;
-  useEffect(() => {
-    if (!autoSignIn || !autoMember || autoTried.current) return;
-    autoTried.current = true;
-    setSelected(autoMember);
-    void signIn(autoMember, autoSignIn.pin);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once, when the linking person first appears
-  }, [autoMember]);
 
   function submit(event: FormEvent) {
     event.preventDefault();

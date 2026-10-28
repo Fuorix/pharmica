@@ -39,7 +39,7 @@ This puts Pharmica online for testers at no cost: the database on **Neon**, the 
 | `SEED_CASHIER_PIN` | pharmica-api | 4–6 digits, the demo cashier's POS PIN |
 | `VITE_API_URL` | pharmica-owner, pharmica-admin, pharmica-pos | `https://pharmica-api.onrender.com` |
 
-4. Press **Apply** (or **Deploy Blueprint**). Render creates and builds all four. The API takes the longest (about 5–10 minutes); its build log ends with `Seeded owner@demo.local, cashier@demo.local, admin@pharmica.local, and the counter PHRM24-1 (link it on the POS with a staff PIN).`
+4. Press **Apply** (or **Deploy Blueprint**). Render creates and builds all four. The API takes the longest (about 5–10 minutes); its build log ends with `Seeded owner@demo.local, cashier@demo.local, admin@pharmica.local, and the counter PHRM24-1 (link it on the POS by entering the counter name).`
 
 ### 4. Check the addresses Render gave
 Open each service in the dashboard; its address is under the name. Render uses `https://<name>.onrender.com` when that name is free, and adds a few random characters when it is not (such as `https://pharmica-api-x3k9.onrender.com`).

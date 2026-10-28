@@ -69,7 +69,7 @@ VITE_API_URL=https://${{api.RAILWAY_PUBLIC_DOMAIN}}
 The API address is built into these apps, so after changing it, redeploy them.
 
 ### 7. Deploy
-Deploy `api` first (Deployments → Deploy, or it deploys on its own after settings change). Wait until it is **Active**: its pre-deploy log should end with `Seeded owner@demo.local, cashier@demo.local, admin@pharmica.local, and the counter PHRM24-1 (link it on the POS with a staff PIN).` Then deploy `owner`, `admin`, and `pos`.
+Deploy `api` first (Deployments → Deploy, or it deploys on its own after settings change). Wait until it is **Active**: its pre-deploy log should end with `Seeded owner@demo.local, cashier@demo.local, admin@pharmica.local, and the counter PHRM24-1 (link it on the POS by entering the counter name).` Then deploy `owner`, `admin`, and `pos`.
 
 ### 8. Check
 - `https://<api address>/api/v1/health` shows `{"status":"ok","service":"pharmica-api",...}`.

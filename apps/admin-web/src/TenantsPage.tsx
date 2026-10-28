@@ -83,7 +83,7 @@ function Created({ response, onOpen }: { response: CreateTenantResponse; onOpen:
       <dt>Owner login</dt><dd><code>{owner?.login}</code></dd>
       <dt>Temporary password</dt><dd><code className="secret">{response.temporaryPassword}</code></dd>
       <dt>Shop ID</dt><dd><code>{response.tenant.shopCode}</code></dd>
-      <dt>Counters</dt><dd>{response.tenant.devices.map((device) => <code key={device.id}>{device.name}</code>)} <small>set up on each computer with a staff PIN</small></dd>
+      <dt>Counters</dt><dd>{response.tenant.devices.map((device) => <code key={device.id}>{device.name}</code>)} <small>set up on each computer by entering the counter name on the POS</small></dd>
     </dl>
     <button onClick={onOpen}>Open pharmacy</button>
   </div>;

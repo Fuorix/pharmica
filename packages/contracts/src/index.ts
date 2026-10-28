@@ -33,18 +33,24 @@ export interface AuthResponse {
 /** Header carrying `<deviceId>.<deviceSecret>` for device-authenticated POS requests. */
 export const DEVICE_TOKEN_HEADER = "x-device-token";
 
-/** Links a computer to a counter: the counter name (`<shopCode>-<number>`, e.g. `K7P2QX-1`) and a PIN of a staff member of its branch. */
+/** Links a computer to a counter by its name (`<shopCode>-<number>`, e.g. `K7P2QX-1`). */
 export interface LinkDeviceRequest {
   deviceName: string;
-  pin: string;
 }
 
 export interface LinkDeviceResponse {
   device: { id: string; name: string; branchId: string; branchName: string };
   /** `<deviceId>.<secret>`; shown once, stored by the POS. */
   deviceToken: string;
-  /** The staff member whose PIN linked the counter, so the POS can sign them straight in. */
-  userId: string;
+}
+
+/** A linked counter adds a cashier on its own branch during first-time setup. */
+export interface CreatePosStaffRequest {
+  name: string;
+  login: string;
+  pin: string;
+  /** Whole percent from 0 to 100. Omitted means 5. */
+  maxDiscountPercent?: number;
 }
 
 export interface DeviceUser {

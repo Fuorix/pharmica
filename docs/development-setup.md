@@ -131,7 +131,7 @@ The tax report and FBR settings are not in the MVP.
 
 Everything under `/api/v1/admin` is for Pharmica staff only; owners and cashiers get 403 on every admin route, and a test walks all of them to prove it.
 
-- **Onboarding a pharmacy** creates the organisation, its first branch, the owner, the subscription, and the counters in one step. The owner gets a temporary password, shown once. Until they choose their own, every API call except changing the password returns `CREDENTIAL_CHANGE_REQUIRED`. The summary shows the shop ID and the counter names to set up with a staff PIN.
+- **Onboarding a pharmacy** creates the organisation, its first branch, the owner, the subscription, and the counters in one step. The owner gets a temporary password, shown once. Until they choose their own, every API call except changing the password returns `CREDENTIAL_CHANGE_REQUIRED`. The summary shows the shop ID and the counter names to enter on the POS.
 - **Go-live checklist**: the owner has signed in and set a password; the branch address and phone are set; a counter is linked; staff have PINs; the data migration is done or not needed (set by staff); stock is entered; the first sale has reached the cloud; the first payment has been received.
 - **Suspending** a pharmacy (a reason is required) signs everyone out and stops cloud sync. Counters keep billing offline, and they are told sync is paused, not that they were deactivated. Unpaid subscriptions are not suspended; grace mode handles them.
 - **Support view**: each counter's last report (pending and rejected uploads, last error, app version), failed, conflicting, or flagged uploads, and the pharmacy's audit history, paged. It is read-only and never shows password hashes or device secrets.

@@ -6,7 +6,7 @@ const OWNER_WEB = "http://localhost:3000";
 const OWNER_LOGIN = "e2e-onboarded-owner@test.local";
 
 // A Pharmica admin onboards a new pharmacy; its owner takes over with their own password and adds a cashier;
-// the counter is set up with its name and the cashier's PIN; the admin records the first payment and the owner sees it.
+// the counter is set up with its name, then the cashier signs in with a PIN; the admin records the first payment and the owner sees it.
 test("a new pharmacy is created, its counter set up, and paid for end to end", async ({ browser, request }) => {
   // 1. Admin panel: create the pharmacy.
   const adminContext = await browser.newContext();
@@ -55,12 +55,16 @@ test("a new pharmacy is created, its counter set up, and paid for end to end", a
   // The owner sees the shop ID in the sidebar.
   await expect(owner.locator(".shop-id")).toContainText(shopCode);
 
-  // 3. The counter is set up with its name and the cashier's PIN, which signs the cashier in.
+  // 3. The counter is set up with its name. Staff already exist, so setup skips adding a cashier, then the cashier signs in.
   const posContext = await browser.newContext({ baseURL: "http://localhost:3002" });
   const pos = await posContext.newPage();
   await pos.goto("/");
   await pos.getByLabel("Counter name").fill(`${shopCode}-1`);
-  await pos.getByLabel("Your PIN").fill("2468");
+  await pos.getByRole("button", { name: "Set up counter" }).click();
+  await pos.getByRole("button", { name: "Skip" }).click();
+  await expect(pos.getByText("Who is at the counter?")).toBeVisible({ timeout: 60_000 });
+  await pos.getByRole("button", { name: "Onboard Cashier" }).click();
+  await pos.getByLabel("PIN for Onboard Cashier").fill("2468");
   await pos.keyboard.press("Enter");
   await expect(pos.locator(".signed-in")).toContainText("Onboard Cashier");
 
