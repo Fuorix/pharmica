@@ -196,6 +196,8 @@ table { font-variant-numeric: tabular-nums; }
 .subscription-banner.warning { background: var(--bad-soft); color: var(--bad); border: 1px solid #f5c7c1; }
 .subscription-banner.info { background: var(--ok-soft); color: var(--ok); border: 1px solid #c4e6d2; }
 button.link { background: none; color: inherit; padding: 0; text-decoration: underline; font-weight: 700; }
+.subscription-banner button.link { background: var(--brand); color: #fff; border: 1px solid var(--brand); padding: 6px 14px; text-decoration: none; border-radius: var(--radius-sm); }
+.subscription-banner button.link:hover:not(:disabled) { background: var(--brand-dark); border-color: var(--brand-dark); color: #fff; }
 .plain-list { margin: 12px 0 0; padding-left: 18px; }
 .plain-list li { border: 0; padding: 4px 0; }
 .plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }

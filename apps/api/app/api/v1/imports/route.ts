@@ -43,5 +43,5 @@ export async function POST(request: Request): Promise<Response> {
 
   const created = await createJob({ user: access.user, organisationId: scope.branch.organisationId, branchId: scope.branch.id, kind: body.data.kind, fileName: body.data.fileName, content });
   if (created instanceof Response) return withCors(created, request);
-  return withCors(Response.json({ ...(await jobDetail(created.job, { filter: "attention" })), resumed: created.resumed }, { status: created.resumed ? 200 : 201, headers: { "x-api-version": "v1" } }), request);
+  return withCors(Response.json({ ...(await jobDetail(created.job, { filter: "all" })), resumed: created.resumed }, { status: created.resumed ? 200 : 201, headers: { "x-api-version": "v1" } }), request);
 }

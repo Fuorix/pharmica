@@ -56,11 +56,11 @@ export async function PATCH(request: Request, context: Context): Promise<Respons
     if (unknown) return withCors(apiError(400, "INVALID_MAPPING", `"${unknown[1]}" is not a column of this file, or "${unknown[0]}" is not a field`), request);
     const missing = IMPORT_FIELDS[job.kind].find((field) => field.required && !columnMap[field.key]);
     if (missing) return withCors(apiError(400, "INVALID_MAPPING", `Choose the column for ${missing.label}`), request);
-    return ok(request, await jobDetail(await applyMapping(job, columnMap, user), { filter: "attention" }));
+    return ok(request, await jobDetail(await applyMapping(job, columnMap, user), { filter: "all" }));
   }
   if (job.status !== "REVIEW") return withCors(apiError(409, "MAPPING_NEEDED", "Match the columns first"), request);
   const result = await decide(job, body.data.decisions, user);
-  return ok(request, { ...result, ...(await jobDetail((await db.importJob.findUniqueOrThrow({ where: { id: job.id } })), { filter: "attention" })) });
+  return ok(request, { ...result, ...(await jobDetail((await db.importJob.findUniqueOrThrow({ where: { id: job.id } })), { filter: "all" })) });
 }
 
 /** Commit (all or nothing) or cancel the import. */
@@ -88,5 +88,5 @@ export async function POST(request: Request, context: Context): Promise<Response
     await db.auditLog.create({ data: { organisationId: job.organisationId, branchId: job.branchId, userId: user.id, action: "import.commit_failed", entityType: "import", entityId: job.id, metadata: { message, detail: error instanceof Error ? error.message : null } } });
     return withCors(apiError(error instanceof ImportCommitError ? 409 : 500, "IMPORT_NOT_COMMITTED", message), request);
   }
-  return ok(request, await jobDetail(await db.importJob.findUniqueOrThrow({ where: { id: job.id } }), { filter: "attention" }));
+  return ok(request, await jobDetail(await db.importJob.findUniqueOrThrow({ where: { id: job.id } }), { filter: "all" }));
 }
