@@ -61,7 +61,7 @@ function describe(row: ImportRowItem): string {
 export function ImportWizard({ branches, organisationId }: { branches: Array<{ id: string; name: string }>; organisationId?: string }) {
   const [jobs, setJobs] = useState<ImportJobSummary[]>([]);
   const [open, setOpen] = useState<ImportJobDetail | null>(null);
-  const [filter, setFilter] = useState<Filter>("attention");
+  const [filter, setFilter] = useState<Filter>("all");
   const [kind, setKind] = useState<ImportKind>("STOCK");
   const [branchId, setBranchId] = useState(branches[0]?.id ?? "");
   const [file, setFile] = useState<File | null>(null);
@@ -102,7 +102,7 @@ export function ImportWizard({ branches, organisationId }: { branches: Array<{ i
     if (!file) return setMessage("Choose a file first");
     if (file.size > 8 * 1024 * 1024) return setMessage("Files up to 8 MB; split larger ones");
     const content = await toBase64(file);
-    setFilter("attention");
+    setFilter("all");
     await run(() => apiFetch("/api/v1/imports", { method: "POST", ...jsonBody({ branchId, kind, fileName: file.name, content }) }),
       (body) => body.job.status === "MAPPING" ? "Match the columns below to continue" : `${body.job.rowCount} rows read. ${body.job.counts.needsReview} need a decision, ${body.job.counts.invalid} cannot be imported as they are.`);
   }
@@ -180,7 +180,7 @@ export function ImportWizard({ branches, organisationId }: { branches: Array<{ i
         <td>{job.fileName}</td>
         <td>{job.rowCount}<small>{job.status === "COMMITTED" ? `${job.counts.committed} imported` : `${job.counts.ready} ready · ${job.counts.needsReview} to decide · ${job.counts.invalid} to fix`}</small></td>
         <td><span className={`imp-chip ${job.status === "COMMITTED" ? "committed" : job.status === "CANCELLED" ? "skipped" : "needs_review"}`}>{job.status.toLowerCase()}</span></td>
-        <td><button className="secondary" onClick={() => { setFilter("attention"); void openJob(job.id, "attention"); }}>{job.status === "REVIEW" || job.status === "MAPPING" ? "Continue" : "Open"}</button></td>
+        <td><button className="secondary" onClick={() => { setFilter("all"); void openJob(job.id, "all"); }}>{job.status === "REVIEW" || job.status === "MAPPING" ? "Continue" : "Open"}</button></td>
       </tr>)}
     </tbody></table>
     {!jobs.length && <p className="imp-note">No imports yet.</p>}
